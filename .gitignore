@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# My adding
+Angles.ods
+build/
+Calibr_1920x1080.xml
+.vscode/

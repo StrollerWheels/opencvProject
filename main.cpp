@@ -86,147 +86,101 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
                                       float &fMovingAvgX, VideoCapture &xCaptureFrame, Mat &xFrameCommon);
 void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, ofstream &xFileToSave);
 
-//=====================================================================================
-//=====================================================================================
-static size_t xPinForward(0), xPinBack(0);
-//=====================================================================================
-//=====================================================================================
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 int main(int argc, char *argv[])
 {
   prvInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
 
-  //=====================================================================================
-  //=====================================================================================
-#pragma omp parallel sections
+  for (;;)
   {
-#pragma omp section
-    //=====================================================================================
-    //=====================================================================================
-    for (;;)
+    static float fMovingAvgYaw_(0.f), fMovingAvgX_(0.f);             /// Moving average value
+    static float fPeriod_(0.f), fAmplitude_(0.f);                    ///< Skating period and amplitude
+    Mat xFrameCommon, xFrameTemp;                                    ///< Captured frames
+    static queue<Mat> pxFramesForward, pxFramesBack, pxFramesToCalc; ///< Captured frames at the points of trajectory extremum
+    double yaw(0), pitch(0), roll(0);                                ///< Yaw, pitch, roll, in radian
+    static TEnumStatePosition eStatePosition(STATE_NONE);            ///< Wheelchair position: at the nearest or farthest point from the marker, or between them
+    float fAvgYaw(0.f), fAvgX(0.f);
+
+    while (pxFramesForward.empty() == false)
+      pxFramesForward.pop();
+    while (pxFramesBack.empty() == false)
+      pxFramesBack.pop();
+    while (pxFramesToCalc.empty() == false)
+      pxFramesToCalc.pop();
+
+    while (((digitalRead(NO_PIN_FORWARD) == LOW) && (digitalRead(NO_PIN_BACK) == LOW)) ||
+           ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == HIGH)))
     {
-      static float fMovingAvgYaw_(0.f), fMovingAvgX_(0.f);             /// Moving average value
-      static float fPeriod_(0.f), fAmplitude_(0.f);                    ///< Skating period and amplitude
-      Mat xFrameCommon, xFrameTemp;                                    ///< Captured frames
-      static queue<Mat> pxFramesForward, pxFramesBack, pxFramesToCalc; ///< Captured frames at the points of trajectory extremum
-      double yaw(0), pitch(0), roll(0);                                ///< Yaw, pitch, roll, in radian
-      static TEnumStatePosition eStatePosition(STATE_NONE);                   ///< Wheelchair position: at the nearest or farthest point from the marker, or between them
-      float fAvgYaw(0.f), fAvgX(0.f);
+      if (prvCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
+        prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
+    }
 
+    // Closes point to the marker
+    while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
+           (pxFramesForward.size() < COUNT_FRAMES))
+    {
+      if (prvCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
+        prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
+      pxFramesForward.push(xFrameTemp);
+      /***/ cout << "Capture closes was" << endl;
+    }
+
+    // Farthest point from the marker
+    while ((digitalRead(NO_PIN_BACK) == HIGH) && (digitalRead(NO_PIN_FORWARD) == LOW) &&
+           (pxFramesBack.size() < COUNT_FRAMES))
+    {
+      if (prvCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
+        prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
+      pxFramesBack.push(xFrameTemp);
+      /***/ cout << "Capture farthest was" << endl;
+    }
+
+    // Point defenition
+    if ((pxFramesForward.empty() == false) && (pxFramesBack.empty() == true))
+      eStatePosition = STATE_FORWARD;
+    if ((pxFramesForward.empty() == true) && (pxFramesBack.empty() == false))
+      eStatePosition = STATE_BACK;
+
+    // Position calculation preparation
+    switch (eStatePosition)
+    {
+    case STATE_FORWARD:
+      if (pxFramesForward.size() < COUNT_FRAMES)
+        pxFramesToCalc.push(xFrameCommon);
       while (pxFramesForward.empty() == false)
+      {
+        pxFramesToCalc.push(pxFramesForward.front());
         pxFramesForward.pop();
+      }
+      break;
+    case STATE_BACK:
+      if (pxFramesBack.size() < COUNT_FRAMES)
+        pxFramesToCalc.push(xFrameCommon);
       while (pxFramesBack.empty() == false)
+      {
+        pxFramesToCalc.push(pxFramesBack.front());
         pxFramesBack.pop();
-      while (pxFramesToCalc.empty() == false)
-        pxFramesToCalc.pop();
-
-      // while (((xPinForward == LOW) && (xPinBack == LOW)) ||
-      //        ((xPinForward == HIGH) && (xPinBack == HIGH)))
-      while (((xPinForward == LOW) && (xPinBack == LOW)) ||
-             ((xPinForward == HIGH) && (xPinBack == HIGH)))
-      {
-        if (prvCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
-          prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
       }
+      break;
+    default:
+      continue;
+    }
 
-      // Closes point to the marker
-      while ((xPinForward == HIGH) && (xPinBack == LOW) &&
-             (pxFramesForward.size() < COUNT_FRAMES))
-      {
-        if (prvCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
-          prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
-        pxFramesForward.push(xFrameTemp);
-        /***/cout << "Capture closes was" <<endl;
-      }
+    cout << "Count of frames = " + std::to_string(pxFramesToCalc.size()) << endl;
 
-      // Farthest point from the marker
-      while ((xPinBack == HIGH) && (xPinForward == LOW) &&
-             (pxFramesBack.size() < COUNT_FRAMES))
-      {
-        if (prvCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
-          prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
-        pxFramesBack.push(xFrameTemp);
-        /***/cout << "Capture farthest was" <<endl;
-      }
+    if (prvYawTranslationCalculation(pxFramesToCalc, xMarkerPoints, xCameraMatrix, xDistCoefficients, fAvgYaw, fAvgX) == false)
+    {
+      fAvgYaw = fMovingAvgYaw_;
+      fAvgX = fMovingAvgX_;
+      cout << "Failed measurement" << endl;
+    }
 
-      // Point defenition
-      if ((pxFramesForward.empty() == false) && (pxFramesBack.empty() == true))
-        eStatePosition = STATE_FORWARD;
-      if ((pxFramesForward.empty() == true) && (pxFramesBack.empty() == false))
-        eStatePosition = STATE_BACK;
-
-      // Position calculation preparation
-      switch (eStatePosition)
-      {
-      case STATE_FORWARD:
-        if (pxFramesForward.size() < COUNT_FRAMES)
-          pxFramesToCalc.push(xFrameCommon);
-        while (pxFramesForward.empty() == false)
-        {
-          pxFramesToCalc.push(pxFramesForward.front());
-          pxFramesForward.pop();
-        }
-        break;
-      case STATE_BACK:
-        if (pxFramesBack.size() < COUNT_FRAMES)
-          pxFramesToCalc.push(xFrameCommon);
-        while (pxFramesBack.empty() == false)
-        {
-          pxFramesToCalc.push(pxFramesBack.front());
-          pxFramesBack.pop();
-        }
-        break;
-      default:
-        continue;
-      }
-
-      cout << "Count of frames = " + std::to_string(pxFramesToCalc.size()) << endl;
-
-      if (prvYawTranslationCalculation(pxFramesToCalc, xMarkerPoints, xCameraMatrix, xDistCoefficients, fAvgYaw, fAvgX) == false)
-      {
-        fAvgYaw = fMovingAvgYaw_;
-        fAvgX = fMovingAvgX_;
-        cout << "Failed measurement" << endl;
-      }
-
-      prvMovingAvgAndSendPacket(eStatePosition, fAvgYaw, fAvgX, fMovingAvgYaw_, fMovingAvgX_, xCaptureFrame, xFrameCommon);
+    prvMovingAvgAndSendPacket(eStatePosition, fAvgYaw, fAvgX, fMovingAvgYaw_, fMovingAvgX_, xCaptureFrame, xFrameCommon);
 
 #ifdef DEBUG_SOFT
-      prvDebugFunction(fMovingAvgYaw_, fMovingAvgX_, xFileToSave);
+    prvDebugFunction(fMovingAvgYaw_, fMovingAvgX_, xFileToSave);
 #endif
-    }
-//============================================================================================
-//============================================================================================
-#pragma omp section
-    {
-//============================================================================================
-//============================================================================================
-#define PERIOD_HALF 2500ms
-#define STOP_TIME 500ms
-      this_thread::sleep_for(5000ms);
-      xPinForward = 1;
-      xPinBack = 0;
-      for (;;)
-      {
-        this_thread::sleep_for(STOP_TIME);
-        xPinForward = 0;
-        xPinBack = 0;
-        this_thread::sleep_for(PERIOD_HALF);
-        xPinForward = 0;
-        xPinBack = 1;
-        this_thread::sleep_for(STOP_TIME);
-        xPinForward = 0;
-        xPinBack = 0;
-        this_thread::sleep_for(PERIOD_HALF);
-        xPinForward = 1;
-        xPinBack = 0;
-      }
-      //============================================================================================
-      //============================================================================================
-    }
   }
-  //============================================================================================
-  //============================================================================================
 
   return 0;
 }
@@ -447,7 +401,7 @@ static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xM
   while (pxFramesToCalc.empty() == false)
   {
     // Position calculation
-    xFrameTemp1 = pxFramesToCalc.front();      
+    xFrameTemp1 = pxFramesToCalc.front();
     xDetector_.detectMarkers(xFrameTemp1, xCornersMarker, xIdDetectMarker, xRejectedMarker);
     pxFramesToCalc.pop();
     nMarkers = xCornersMarker.size();
@@ -484,11 +438,11 @@ static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xM
   // Averaging
   fAvgYaw = fSumYaw / static_cast<float>(ulFrameNo);
   fAvgX = fSumX / static_cast<float>(ulFrameNo);
-  
+
   if (ulFrameNo == 0)
     ret = false;
 
-  return ret;  
+  return ret;
 }
 
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -509,13 +463,13 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
     fYawForward_ = fAvgYaw;
     fX_Forward_ = fAvgX;
     // Waiting for movement to start
-    while ((xPinForward == HIGH) && (xPinBack == LOW))
+    while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW))
     {
       if (prvCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
         prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
     }
     // Checking the correctness of the combination on the input
-    if ((xPinForward == LOW) && (xPinBack == HIGH))
+    if ((digitalRead(NO_PIN_FORWARD) == LOW) && (digitalRead(NO_PIN_BACK) == HIGH))
       prvRiscBehavior(RISC_WRONG_INPUT_COMBINATION, "Momentary movements between points of extrema");
     eStatePosition = STATE_NONE;
     break;
@@ -537,13 +491,13 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
     prvSendPacketToStroller(fCoefRotation, fCoefTranslation, fPeriod_, fAmplitude_);
 
     // Waiting for movement to start
-    while ((xPinForward == LOW) && (xPinBack == HIGH))
+    while ((digitalRead(NO_PIN_FORWARD) == LOW) && (digitalRead(NO_PIN_BACK) == HIGH))
     {
       if (prvCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
         prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
     }
     // Checking the correctness of the combination on the input
-    if ((xPinForward == HIGH) && (xPinBack == LOW))
+    if ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW))
       prvRiscBehavior(RISC_WRONG_INPUT_COMBINATION, "Momentary movements between points of extrema");
     eStatePosition = STATE_NONE;
     break;
@@ -560,7 +514,7 @@ void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, ofstream &xFileT
   cout << "Yaw = " << fMovingAvgYaw << " ( " << (fMovingAvgYaw * DEGRES_IN_RAD) << " degres);" << endl;
   cout << "X = " << fMovingAvgX << " ( " << (fMovingAvgX * 100.f) << " cm);" << endl;
   cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
-  //this_thread::sleep_for(3333ms);
-  // Saving the position to a file
+  // this_thread::sleep_for(3333ms);
+  //  Saving the position to a file
   xFileToSave << std::to_string(fMovingAvgYaw * DEGRES_IN_RAD) + "	" + std::to_string(fMovingAvgX) << endl;
 }
