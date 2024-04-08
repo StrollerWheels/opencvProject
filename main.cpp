@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
 
   for (;;)
   {
-    static float fMovingAvgYaw_(0.f), fMovingAvgX_(0.f);             /// Moving average value
+    static float fMovingAvgYaw_(0.f), fMovingAvgX_(0.f);             ///< Moving average value
     static float fPeriod_(0.f), fAmplitude_(0.f);                    ///< Skating period and amplitude
     Mat xFrameCommon, xFrameTemp;                                    ///< Captured frames
     static queue<Mat> pxFramesForward, pxFramesBack, pxFramesToCalc; ///< Captured frames at the points of trajectory extremum
@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
       if (prvCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
         prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
       pxFramesForward.push(xFrameTemp);
-      /***/ cout << "Capture closes was" << endl;
+      cout << "Capture closes was" << endl;
     }
 
     // Farthest point from the marker
@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
       if (prvCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
         prvRiscBehavior(RISC_CAMERA_PROBLEM, "Unable to capture a frame");
       pxFramesBack.push(xFrameTemp);
-      /***/ cout << "Capture farthest was" << endl;
+      cout << "Capture farthest was" << endl;
     }
 
     // Point defenition
@@ -140,6 +140,8 @@ int main(int argc, char *argv[])
       eStatePosition = STATE_FORWARD;
     if ((pxFramesForward.empty() == true) && (pxFramesBack.empty() == false))
       eStatePosition = STATE_BACK;
+    if ((pxFramesForward.empty() == false) && (pxFramesBack.empty() == false))
+      eStatePosition = STATE_NONE;
 
     // Position calculation preparation
     switch (eStatePosition)
@@ -316,15 +318,15 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   int res(0);
   string sError;
 
-  xPacketOut.ucMarker = usMarker;
+  xPacketOut.ucMarker = usMarker++;
   xPacketOut.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut), sizeof(xPacketOut) - 2);
 
   errno = 0;
   if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut), sizeof(xPacketOut)) < 0)
     prvRiscBehavior(RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
 
-  if ((pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut))) ||
-      (pxPacketIn->ucMarker != usMarker))
+  if ((pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut) - 2)) ||
+      (pxPacketIn->ucMarker != (usMarker - 1)))
   {
     ret = false;
   }
@@ -436,8 +438,11 @@ static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xM
   }
 
   // Averaging
-  fAvgYaw = fSumYaw / static_cast<float>(ulFrameNo);
-  fAvgX = fSumX / static_cast<float>(ulFrameNo);
+  if (ulFrameNo != 0)
+  {
+    fAvgYaw = fSumYaw / static_cast<float>(ulFrameNo);
+    fAvgX = fSumX / static_cast<float>(ulFrameNo);
+  }
 
   if (ulFrameNo == 0)
     ret = false;
