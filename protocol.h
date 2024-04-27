@@ -25,5 +25,5 @@ typedef struct
       from stroller control unit it is repeated in same field */
   uint16_t ucMarker;
   uint16_t crc16; ///< Контрольная сумма, см. @ref crc16.c
-}TProtocolInOrangePi;
+}TProtocolInAruco;
 #pragma pack(pop)

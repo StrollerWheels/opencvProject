@@ -57,11 +57,11 @@ const int SPI_PORT = 0;
 const int SPI_BAUDRATE = 1000000;
 const int SPI_MODE = 0;
 
-const float COEF_PROPORTIONAL_YAW = 5.f;
-const float COEF_INTEGRAL_YAW = 1.f;
+const float COEF_PROPORTIONAL_YAW = 95.f;
+const float COEF_INTEGRAL_YAW = 19.f;
 const float COEF_DIFFERENTIAL_YAW = 0.f;
-const float COEF_PROPORTIONAL_X = 3.f;
-const float COEF_INTEGRAL_X = 0.5;
+const float COEF_PROPORTIONAL_X = 57.f;
+const float COEF_INTEGRAL_X = 9.5;
 const float COEF_DIFFERENTIAL_X = 0.f;
 
 const size_t COUNT_FRAMES = 10;
