@@ -64,19 +64,22 @@ const float COEF_PROPORTIONAL_X = 57.f;
 const float COEF_INTEGRAL_X = 9.5;
 const float COEF_DIFFERENTIAL_X = 0.f;
 
-const size_t COUNT_FRAMES = 10;
+const size_t COUNT_FRAMES = 5;
 
 ofstream xFileToSave;                  ///< Debugging telemetry recording
 Mat xCameraMatrix, xDistCoefficients;  ///< Camera calibration settings
 VideoCapture xCaptureFrame;            ///< Object to capture a frame
 cv::Mat xMarkerPoints(4, 1, CV_32FC3); ///< Coordinates of marker corners relative to the marker center
+#ifdef DEBUG_SOFT
+float fCoefTranslationDebug(0.f), fCoefRotationDebug(0.f); ///< To display in the terminal when debugging
+#endif
 
 static bool prvReadCameraParameters(std::string filename, cv::Mat &xCameraMatrix, cv::Mat &xDistCoefficients);
 static void prvGetYawRollPitch(double q0, double qx, double qy, double qz, double &yaw, double &roll, double &pitch);
 static bool prvCaptureFrame(VideoCapture &xCapture, Mat &frame, size_t nAttempts);
 static void prvRiscBehavior(TEnumRiscBehavior eErrorCode, string sError);
 static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float &fTargetYaw, float &fTargetX,
-                                              float &fCoefRotation, float &fCoefTranslation);
+                                              float &fCoefRotation, float &fCoefTranslation, float &fPeriod);
 static bool prvSendPacketToStroller(float &fCoefRotation_, float &fCoefTranslation_, float &fPeriod, float &fAmplitude);
 static void prvInitializationSystem(ofstream &xFileToSave, Mat &xCameraMatrix, Mat &xDistCoefficients,
                                     VideoCapture &xCaptureFrame, Mat &xMarkerPoints);
@@ -84,7 +87,7 @@ static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xM
                                          Mat &xDistCoefficients, float &fAvgYaw, float &fAvgX);
 static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float &fAvgYaw, float &fAvgX, float &fMovingAvgYaw,
                                       float &fMovingAvgX, VideoCapture &xCaptureFrame, Mat &xFrameCommon);
-void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, ofstream &xFileToSave);
+void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, ofstream &xFileToSave, float &fCoefRot, float &fCoefTransl);
 
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 int main(int argc, char *argv[])
@@ -93,8 +96,7 @@ int main(int argc, char *argv[])
 
   for (;;)
   {
-    static float fMovingAvgYaw_(0.f), fMovingAvgX_(0.f);             ///< Moving average value
-    static float fPeriod_(0.f), fAmplitude_(0.f);                    ///< Skating period and amplitude
+    static float fMovingAvgYaw_(0.f), fMovingAvgX_(0.f);             ///< Moving average value    
     Mat xFrameCommon, xFrameTemp;                                    ///< Captured frames
     static queue<Mat> pxFramesForward, pxFramesBack, pxFramesToCalc; ///< Captured frames at the points of trajectory extremum
     double yaw(0), pitch(0), roll(0);                                ///< Yaw, pitch, roll, in radian
@@ -180,7 +182,7 @@ int main(int argc, char *argv[])
     prvMovingAvgAndSendPacket(eStatePosition, fAvgYaw, fAvgX, fMovingAvgYaw_, fMovingAvgX_, xCaptureFrame, xFrameCommon);
 
 #ifdef DEBUG_SOFT
-    prvDebugFunction(fMovingAvgYaw_, fMovingAvgX_, xFileToSave);
+    prvDebugFunction(fMovingAvgYaw_, fMovingAvgX_, xFileToSave, fCoefRotationDebug, fCoefTranslationDebug);
 #endif
   }
 
@@ -284,7 +286,7 @@ static void prvRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
 
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float &fTargetYaw, float &fTargetX,
-                                              float &fCoefRotation, float &fCoefTranslation)
+                                              float &fCoefRotation, float &fCoefTranslation, float &fPeriod)
 {
   static float fIntegralErrorYaw(0.f), fIntegralErrorX(0.f);
   float fErrorYaw = fTargetYaw - fYaw;
@@ -293,8 +295,8 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float &fTa
   fIntegralErrorYaw = fIntegralErrorYaw + fErrorYaw;
   fIntegralErrorX = fIntegralErrorX + fErrorX;
 
-  fCoefRotation = fErrorYaw * COEF_PROPORTIONAL_YAW + fIntegralErrorYaw * COEF_INTEGRAL_YAW;
-  fCoefTranslation = fErrorX * COEF_PROPORTIONAL_X + fIntegralErrorX * COEF_INTEGRAL_X;
+  fCoefRotation = fErrorYaw * COEF_PROPORTIONAL_YAW + fIntegralErrorYaw * COEF_INTEGRAL_YAW * fPeriod;
+  fCoefTranslation = fErrorX * COEF_PROPORTIONAL_X + fIntegralErrorX * COEF_INTEGRAL_X * fPeriod;
 
   if (fabsf(fCoefRotation) > 50.f)
   {
@@ -491,9 +493,15 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
     }
 #endif
 
-    prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingAvgX, fTargetYaw_, fTargetX_, fCoefRotation, fCoefTranslation);
+    prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingAvgX, fTargetYaw_, fTargetX_, fCoefRotation, fCoefTranslation, fPeriod_);
 
+/***/fCoefRotation = fCoefTranslation = 0.f;
     prvSendPacketToStroller(fCoefRotation, fCoefTranslation, fPeriod_, fAmplitude_);
+
+#ifdef DEBUG_SOFT
+    fCoefTranslationDebug = fCoefTranslation;
+    fCoefRotationDebug = fCoefRotation;
+#endif
 
     // Waiting for movement to start
     while ((digitalRead(NO_PIN_FORWARD) == LOW) && (digitalRead(NO_PIN_BACK) == HIGH))
@@ -514,10 +522,11 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /** @brief Debugging information
  */
-void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, ofstream &xFileToSave)
+void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, ofstream &xFileToSave, float &fCoefRot, float &fCoefTransl)
 {
   cout << "Yaw = " << fMovingAvgYaw << " ( " << (fMovingAvgYaw * DEGRES_IN_RAD) << " degres);" << endl;
   cout << "X = " << fMovingAvgX << " ( " << (fMovingAvgX * 100.f) << " cm);" << endl;
+  cout << "Coef rotation = " << fCoefRot << " ; Coef translation = " << fCoefTransl << endl;
   cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
   // this_thread::sleep_for(3333ms);
   //  Saving the position to a file
