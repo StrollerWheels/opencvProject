@@ -20,6 +20,7 @@ add_executable(opencvProject main.cpp crc.cpp)
 
 target_link_libraries( opencvProject ${OpenCV_LIBS} )
 target_link_libraries( opencvProject ${WIRINGPI_LIBRARIES} )
+target_include_directories( opencvProject PUBLIC /usr/local/include/opencv4 )
 
 #target_link_libraries(testDetect PRIVATE OpenMP::OpenMP_CXX)
 

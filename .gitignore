@@ -36,3 +36,10 @@ Angles.ods
 build/
 Calibr_1920x1080.xml
 .vscode/
+CMakeCache.txt
+CMakeFiles/
+CPackConfig.cmake
+CPackSourceConfig.cmake
+CTestTestfile.cmake
+DartConfiguration.tcl
+cmake_install.cmake
