@@ -63,7 +63,7 @@ const int NO_PIN_FORWARD = 0;
 const int NO_PIN_BACK = 1;
 const int SPI_CHANNEL = 1;
 const int SPI_PORT = 0;
-const int SPI_BAUDRATE = 500000;
+const int SPI_BAUDRATE = 1000000;
 const int SPI_MODE = 0;
 
 const float COEF_PROPORTIONAL_YAW = 0.5;
@@ -76,9 +76,9 @@ const float COEF_DIFFERENTIAL_X = 0.f;
 const size_t COUNT_FRAMES = 5;
 
 const size_t COUNT_MEASUREMENT_FOR_MOVING_AVG = 3;
-constexpr float MISS_RATE_YAW_GRAD = 400.999999999; //4.999999999
+constexpr float MISS_RATE_YAW_GRAD = /*400.999999999; /*/6.999999999;
 constexpr float MISS_RATE_YAW_RAD = MISS_RATE_YAW_GRAD / DEGRES_IN_RAD;
-const float MISS_RATE_X_METER = 100; //0.5;
+const float MISS_RATE_X_METER = /*100; /*/0.5;
 const float IMPOSSIBLE_YAW_X_VALUE = 100.f; ///< Moving average is initiated by this value
 
 ofstream xFileToSave;                  ///< Debugging telemetry recording
@@ -95,7 +95,7 @@ static bool prvCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAtte
 static void prvRiscBehavior(TEnumRiscBehavior eErrorCode, string sError);
 static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float &fTargetYaw, float &fTargetX,
                                               OUT float &fCoefRotation, OUT float &fCoefTranslation, float &fPeriod);
-static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, OUT float &fPeriod, OUT float &fAmplitude);
+static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, uint16_t usShift, OUT float &fPeriod, OUT float &fAmplitude);
 static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatrix, OUT Mat &xDistCoefficients,
                                     OUT VideoCapture &xCaptureFrame, OUT Mat &xMarkerPoints);
 static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients,
@@ -333,9 +333,8 @@ return_prvRoataionTranslationCalculation:
 }
 
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, OUT float &fPeriod, OUT float &fAmplitude)
+static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude)
 {
-  static uint16_t usMarker(0.f);
   bool ret(true);
   static TProtocolInStroller xPacketOut;
   TProtocolInAruco *pxPacketIn = reinterpret_cast<TProtocolInAruco *>(&xPacketOut);
@@ -346,7 +345,7 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   xPacketOut.ucIdPacket = 0x01;
   xPacketOut.fRotation = fCoefRotation;
   xPacketOut.fTranslation = fCoefTranslation;
-  xPacketOut.usMarker = usMarker++;
+  xPacketOut.ssShift = ssShift;
   xPacketOut.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut), sizeof(xPacketOut) - 2);
 
   errno = 0;
@@ -362,11 +361,6 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   {
     fPeriod = pxPacketIn->fPeriod;
     fAmplitude = pxPacketIn->fAmplitude;
-  }
-  if (pxPacketIn->usMarker != (usMarker - 2))
-  {
-    ret = false;
-    cout << " ! ! ! Marker error ! ! ! " << endl;
   }
 
   return ret;
@@ -385,7 +379,7 @@ static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatri
     prvRiscBehavior(TEnumRiscBehavior::RISC_NOT_SETUP_SPI, strerror(errno));
 
   xFileToSave.open("../Angles.ods");
-  xFileToSave << "Yaw	X" << endl;
+  xFileToSave << "AvgYaw	AvgX MovingAvgYaw" << endl;
 
   if (prvReadCameraParameters("../Calibr_1920x1080.xml", xCameraMatrix, xDistCoefficients) == false)
     prvRiscBehavior(TEnumRiscBehavior::RISC_INVALID_CAMERA_FILE, "The settings file cannot be opened");
@@ -438,7 +432,16 @@ static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xM
   {
     // Position calculation
     xFrameTemp1 = pxFramesToCalc.front();
-    xDetector_.detectMarkers(xFrameTemp1, xCornersMarker, xIdDetectMarker, xRejectedMarker);
+    try
+    {
+      xDetector_.detectMarkers(xFrameTemp1, xCornersMarker, xIdDetectMarker, xRejectedMarker); /// @warning Was exception!!!
+    }
+    catch (...)
+    {
+      cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+    }
+    /*terminate called after throwing an instance of 'cv::Exception'
+    what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
     pxFramesToCalc.pop();
     nMarkers = xCornersMarker.size();
     vector<Vec3d> rvecs(nMarkers), tvecs(nMarkers);
@@ -549,7 +552,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
 
     // Yaw calculation
     if ((fabsf(fYawForward_) < IMPOSSIBLE_YAW_X_VALUE) && (fabsf(fAvgYaw) < IMPOSSIBLE_YAW_X_VALUE))
-      fTemp = (2.f * fYawForward_ + fAvgYaw) / 3.f;
+      fTemp = (3.f * fYawForward_ + fAvgYaw) / 4.f;
     if ((fabsf(fYawForward_) < IMPOSSIBLE_YAW_X_VALUE) && (fabsf(fAvgYaw) > (IMPOSSIBLE_YAW_X_VALUE - 1.f)))
       fTemp = fYawForward_;
     if ((fabsf(fYawForward_) > (IMPOSSIBLE_YAW_X_VALUE - 1.f)) && (fabsf(fAvgYaw) < IMPOSSIBLE_YAW_X_VALUE))
@@ -560,7 +563,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
     // X calculation
     fTemp = IMPOSSIBLE_YAW_X_VALUE;
     if ((fabsf(fX_Forward_) < IMPOSSIBLE_YAW_X_VALUE) && (fabsf(fAvgX) < IMPOSSIBLE_YAW_X_VALUE))
-      fTemp = (2.f * fX_Forward_ + fAvgX) / 3.f;
+      fTemp = (3.f * fX_Forward_ + fAvgX) / 4.f;
     if ((fabsf(fX_Forward_) < IMPOSSIBLE_YAW_X_VALUE) && (fabsf(fAvgX) > (IMPOSSIBLE_YAW_X_VALUE - 1.f)))
       fTemp = fX_Forward_;
     if ((fabsf(fX_Forward_) > (IMPOSSIBLE_YAW_X_VALUE - 1.f)) && (fabsf(fAvgX) < IMPOSSIBLE_YAW_X_VALUE))
@@ -630,7 +633,8 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
       fMovingAvgX = IMPOSSIBLE_YAW_X_VALUE;
     }
 
-    prvSendPacketToStroller(fCoefRotation, fCoefTranslation, fPeriod_, fAmplitude_);
+    /***/float temp = 0.f; int16_t temp1 = 0.f;    
+    prvSendPacketToStroller(temp, temp, temp1, /* fCoefRotation, fCoefTranslation,*/ fPeriod_, fAmplitude_);
 
 #ifdef DEBUG_SOFT
     fCoefTranslationDebug = fCoefTranslation;
