@@ -64,7 +64,7 @@ const int NO_PIN_FORWARD = 0;
 const int NO_PIN_BACK = 1;
 const int SPI_CHANNEL = 1;
 const int SPI_PORT = 0;
-const int SPI_BAUDRATE = 100000;
+const int SPI_BAUDRATE = 75000;
 const int SPI_MODE = 0;
 
 const float COEF_PROPORTIONAL_YAW = 0.5;
