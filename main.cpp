@@ -89,6 +89,7 @@ ofstream xFileToSave;                  ///< Debugging telemetry recording
 Mat xCameraMatrix, xDistCoefficients;  ///< Camera calibration settings
 VideoCapture xCaptureFrame;            ///< Object to capture a frame
 cv::Mat xMarkerPoints(4, 1, CV_32FC3); ///< Coordinates of marker corners relative to the marker center
+uint32_t nMeasurement(0); // Count of measurement
 #ifdef DEBUG_SOFT
 float fCoefTranslationDebug(0.f), fCoefRotationDebug(0.f); ///< To display in the terminal when debugging
 int16_t ssCoefShiftDebug(0.f);
@@ -162,21 +163,12 @@ int main(int argc, char *argv[])
     }
 
     // Point defenition
-    /***/ static bool isBeen = false;
     if ((pxFramesForward.empty() == false) && (pxFramesBack.empty() == true))
-    {
-      if (isBeen == true)
-      {
-        isBeen = true;
-      }
       eStatePosition = TEnumStatePosition::STATE_FORWARD;
-      isBeen = true;
-    }
+
     if ((pxFramesForward.empty() == true) && (pxFramesBack.empty() == false))
-    {
       eStatePosition = TEnumStatePosition::STATE_BACK;
-      isBeen = false;
-    }
+
     if (pxFramesForward.empty() == pxFramesBack.empty())
       eStatePosition = TEnumStatePosition::STATE_NONE;
 
@@ -370,32 +362,41 @@ return_prvRoataionTranslationCalculation:
 static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude)
 {
   bool ret(true);
-  static TProtocolInStroller xPacketOut;
-  TProtocolInAruco *pxPacketIn = reinterpret_cast<TProtocolInAruco *>(&xPacketOut);
   int res(0);
   string sError;
+  static TProtocolInStroller xPacketOut_;
+  TProtocolInAruco *pxPacketIn = reinterpret_cast<TProtocolInAruco *>(&xPacketOut_);  
+  static bool isResetWas_(true);
 
-  xPacketOut.usPreambule = 0x5555;
-  xPacketOut.ucIdPacket = 0x01;
-  xPacketOut.fRotation = fCoefRotation;
-  xPacketOut.fTranslation = fCoefTranslation;
-  xPacketOut.ssShift = ssShift;
-  xPacketOut.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut), sizeof(xPacketOut) - 2);
+  xPacketOut_.usPreambule = 0x5555;
+  xPacketOut_.ucIdPacket = 0x01;
+  xPacketOut_.fRotation = fCoefRotation;
+  xPacketOut_.fTranslation = fCoefTranslation;
+  xPacketOut_.ssShift = ssShift;
+  xPacketOut_.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_) - 2);
 
   errno = 0;
-  if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut), sizeof(xPacketOut)) < 0)
+  if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
     prvRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
 
-  if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut) - 2))
+  if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
   {
     ret = false;
     cout << " ! ! ! CRC16 error ! ! ! " << endl;
   }
   else
   {
+    if ((pxPacketIn->ucIdPacket == ID_PACKET_RESET_WAS) && (isResetWas_ == false))
+    {
+      nMeasurement = 0;
+      isResetWas_ = true;
+    }
     fPeriod = pxPacketIn->fPeriod;
     fAmplitude = pxPacketIn->fAmplitude;
   }
+
+  if (nMeasurement >= COUNT_MEASUREMENT_FOR_MOVING_AVG)
+    isResetWas_ = false;
 
   return ret;
 }
@@ -573,7 +574,6 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
   static vector<float> xAvgPeriodX_(0);                               // Vector of X moving average for one period, is calculated at the far point
   static vector<float> xAvgPeriodZ_(0);                               // Vector of Z moving average for one period, is calculated at the far point
   static float fPeriod_(0.f), fAmplitude_(0.f);
-  static uint32_t nMeasurement_(0); // Count of measurement
   static float fTargetYaw_(0.f), fTargetX_(0.f);
   static float fTargetZ_(TARGET_Z_VALUE_METER);
 
@@ -704,7 +704,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
     fMovingAvgZ = fSumTemp / ((pow(COUNT_MEASUREMENT_FOR_MOVING_AVG, 2.f) + COUNT_MEASUREMENT_FOR_MOVING_AVG) / 2);
 
     // Calculation of motion coefficients for stroller control unit
-    if (++nMeasurement_ >= COUNT_MEASUREMENT_FOR_MOVING_AVG)
+    if (++nMeasurement >= COUNT_MEASUREMENT_FOR_MOVING_AVG)
     {
       if ((fabsf(fMovingAvgYaw) > FLOAT_EPSILON) && (fabsf(fMovingAvgX) > FLOAT_EPSILON))
       {
@@ -713,7 +713,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
                                           OUT fCoefRotation, OUT fCoefTranslation, OUT ssCoefShift, fPeriod_, fAmplitude_);
       }
 #ifdef TARGET_IS_CURRENT_POSITION
-      if (nMeasurement_ == COUNT_MEASUREMENT_FOR_MOVING_AVG)
+      if (nMeasurement == COUNT_MEASUREMENT_FOR_MOVING_AVG)
       {
         fTargetYaw_ = fMovingAvgYaw;
         fTargetX_ = fMovingAvgX;
