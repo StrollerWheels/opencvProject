@@ -64,14 +64,14 @@ const int NO_PIN_FORWARD = 0;
 const int NO_PIN_BACK = 1;
 const int SPI_CHANNEL = 1;
 const int SPI_PORT = 0;
-const int SPI_BAUDRATE = 75000;
+const int SPI_BAUDRATE = 100000;
 const int SPI_MODE = 0;
 
-const float COEF_PROPORTIONAL_YAW = 0.5;
-const float COEF_INTEGRAL_YAW = 0.0;
+const float COEF_PROPORTIONAL_YAW = 2.f;
+const float COEF_INTEGRAL_YAW = 0.01;
 const float COEF_DIFFERENTIAL_YAW = 0.f;
-const float COEF_PROPORTIONAL_X = 0.5;
-const float COEF_INTEGRAL_X = 0.0;
+const float COEF_PROPORTIONAL_X = 2.f;
+const float COEF_INTEGRAL_X = 0.01;
 const float COEF_DIFFERENTIAL_X = 0.f;
 
 const size_t COUNT_FRAMES = 5;
@@ -79,17 +79,17 @@ const size_t COUNT_FRAMES = 5;
 const size_t COUNT_MEASUREMENT_FOR_MOVING_AVG = 3;
 constexpr float MISS_RATE_YAW_GRAD = /*400.999999999; /*/ 6.999999999;
 constexpr float MISS_RATE_YAW_RAD = MISS_RATE_YAW_GRAD / DEGRES_IN_RAD;
-const float MISS_RATE_X_METER = /*100; /*/ 0.5;
-const float MISS_RATE_Z_METER = /*100; /*/ 1.f;
+const float MISS_RATE_X_METER = /*100; /*/ 0.2;
+const float MISS_RATE_Z_METER = 100;          //*/ 0.2;
 const float IMPOSSIBLE_YAW_X_Z_VALUE = 100.f; ///< Moving average is initiated by this value
 const float TARGET_Z_VALUE_METER = 0.6;
-const float MINIMAL_DISTANCE_VALUE_METER = 0.4;
+const float MINIMAL_DISTANCE_VALUE_METER = 0.5;
 
 ofstream xFileToSave;                  ///< Debugging telemetry recording
 Mat xCameraMatrix, xDistCoefficients;  ///< Camera calibration settings
 VideoCapture xCaptureFrame;            ///< Object to capture a frame
 cv::Mat xMarkerPoints(4, 1, CV_32FC3); ///< Coordinates of marker corners relative to the marker center
-uint32_t nMeasurement(0); // Count of measurement
+uint32_t nMeasurement(0);              // Count of measurement
 #ifdef DEBUG_SOFT
 float fCoefTranslationDebug(0.f), fCoefRotationDebug(0.f); ///< To display in the terminal when debugging
 int16_t ssCoefShiftDebug(0.f);
@@ -365,7 +365,7 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   int res(0);
   string sError;
   static TProtocolInStroller xPacketOut_;
-  TProtocolInAruco *pxPacketIn = reinterpret_cast<TProtocolInAruco *>(&xPacketOut_);  
+  TProtocolInAruco *pxPacketIn = reinterpret_cast<TProtocolInAruco *>(&xPacketOut_);
   static bool isResetWas_(true);
 
   xPacketOut_.usPreambule = 0x5555;
@@ -379,10 +379,13 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
     prvRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
 
+  /***/ static size_t all = 0;
+  all++;
   if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
   {
+    /***/ static size_t err = 0;
     ret = false;
-    cout << " ! ! ! CRC16 error ! ! ! " << endl;
+    cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
   }
   else
   {
@@ -455,7 +458,8 @@ static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xM
   vector<int> xIdDetectMarker;                             // Vector of identifiers of the detected markers
   vector<vector<Point2f>> xCornersMarker, xRejectedMarker; // Vector of detected marker corners
   aruco::DetectorParameters xDetectorParams;
-  aruco::Dictionary dictionary = aruco::getPredefinedDictionary(cv::aruco::DICT_5X5_50);
+    /***///xDetectorParams.cornerRefinementMethod = CORNER_REFINE_APRILTAG;
+  aruco::Dictionary dictionary = aruco::getPredefinedDictionary(/*aruco::DICT_ARUCO_MIP_36h12*/cv::aruco::DICT_5X5_50);/***/
   static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
   size_t nMarkers(0);                                                  // Number of found markers (must be 1)
   double yaw(0), roll(0), pitch(0);
@@ -534,13 +538,12 @@ static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xM
       fSumZ = fSumZ + tvecs.at(0)[2];
       ulZ_No++;
     }
-    // Calculate Z value only at a closest point
-    //     else
-    //     {
-    // #ifdef DEBUG_SOFT
-    //       cout << "Missed Z is " << tvecs.at(0)[2] << endl;
-    // #endif
-    //    }
+    else
+    {
+#ifdef DEBUG_SOFT
+      cout << "Missed Z is " << tvecs.at(0)[2] << endl;
+#endif
+    }
 
 #if DEBUG_SOFT > 2
     xFileToSave << std::to_string(yaw * DEGRES_IN_RAD) + "	" << std::to_string(tvecs.at(0)[0])
@@ -706,12 +709,6 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
     // Calculation of motion coefficients for stroller control unit
     if (++nMeasurement >= COUNT_MEASUREMENT_FOR_MOVING_AVG)
     {
-      if ((fabsf(fMovingAvgYaw) > FLOAT_EPSILON) && (fabsf(fMovingAvgX) > FLOAT_EPSILON))
-      {
-        float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
-        prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingAvgX, fDistance, fTargetYaw_, fTargetX_, fTargetZ_,
-                                          OUT fCoefRotation, OUT fCoefTranslation, OUT ssCoefShift, fPeriod_, fAmplitude_);
-      }
 #ifdef TARGET_IS_CURRENT_POSITION
       if (nMeasurement == COUNT_MEASUREMENT_FOR_MOVING_AVG)
       {
@@ -719,17 +716,33 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
         fTargetX_ = fMovingAvgX;
       }
 #endif
+      if ((fabsf(fMovingAvgYaw) > FLOAT_EPSILON) && (fabsf(fMovingAvgX) > FLOAT_EPSILON) &&
+          (fabsf(fMovingAvgYaw) < IMPOSSIBLE_YAW_X_Z_VALUE) && (fabsf(fMovingAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE))
+      {
+        float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
+        prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingAvgX, fDistance, fTargetYaw_, fTargetX_, fTargetZ_,
+                                          OUT fCoefRotation, OUT fCoefTranslation, OUT ssCoefShift, fPeriod_, fAmplitude_);
+      }
+    }        
+
+    // The moving average Z is recalculated
+    if (ssCoefShift != 0)
+    {
+      while (xAvgPeriodZ_.empty() == false)
+        xAvgPeriodZ_.erase(xAvgPeriodZ_.begin());
     }
-    else
+
+    /***/ float temp = 0.f;
+    int16_t temp1 = 0.f;
+    prvSendPacketToStroller(/*temp, temp, temp1,*/ fCoefRotation, fCoefTranslation, ssCoefShift, fPeriod_, fAmplitude_);
+
+    // In case there was a Reset packet
+    if (nMeasurement < COUNT_MEASUREMENT_FOR_MOVING_AVG)
     {
       fMovingAvgYaw = IMPOSSIBLE_YAW_X_Z_VALUE;
       fMovingAvgX = IMPOSSIBLE_YAW_X_Z_VALUE;
       fMovingAvgZ = IMPOSSIBLE_YAW_X_Z_VALUE;
     }
-
-    /***/ float temp = 0.f;
-    int16_t temp1 = 0.f;
-    prvSendPacketToStroller(temp, temp, temp1, /*fCoefRotation, fCoefTranslation, ssCoefShift*/ fPeriod_, fAmplitude_);
 
 #ifdef DEBUG_SOFT
     fCoefTranslationDebug = fCoefTranslation;
@@ -754,6 +767,8 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
   default:
     break;
   }
+
+  /***/ cout << "Target yaw = " << fTargetYaw_ << " ( " << (fTargetYaw_ * DEGRES_IN_RAD) << " degres)"  << " ;  target X = " << fTargetX_ << endl;
 }
 
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
