@@ -58,7 +58,7 @@ constexpr double DEGRES_IN_RAD = 180 / PI;
 
 const float FLOAT_EPSILON = 0.00001;
 
-const float MARKER_LENGTH = 0.1; ///< Marker side length
+const float MARKER_LENGTH = 0.15; ///< Marker side length
 const int CAMERA_NUMBER = 1;     ///< Camera number in OS
 const int NO_PIN_FORWARD = 0;
 const int NO_PIN_BACK = 1;
@@ -67,11 +67,11 @@ const int SPI_PORT = 0;
 const int SPI_BAUDRATE = 100000;
 const int SPI_MODE = 0;
 
-const float COEF_PROPORTIONAL_YAW = 2.f;
+const float COEF_PROPORTIONAL_YAW = 4.f;
 const float COEF_INTEGRAL_YAW = 0.01;
 const float COEF_DIFFERENTIAL_YAW = 0.f;
-const float COEF_PROPORTIONAL_X = 2.f;
-const float COEF_INTEGRAL_X = 0.01;
+const float COEF_PROPORTIONAL_X = /***/0;//2.f;
+const float COEF_INTEGRAL_X = /***/0;//0.01;
 const float COEF_DIFFERENTIAL_X = 0.f;
 
 const size_t COUNT_FRAMES = 5;
@@ -80,10 +80,10 @@ const size_t COUNT_MEASUREMENT_FOR_MOVING_AVG = 3;
 constexpr float MISS_RATE_YAW_GRAD = /*400.999999999; /*/ 6.999999999;
 constexpr float MISS_RATE_YAW_RAD = MISS_RATE_YAW_GRAD / DEGRES_IN_RAD;
 const float MISS_RATE_X_METER = /*100; /*/ 0.2;
-const float MISS_RATE_Z_METER = 100;          //*/ 0.2;
+const float MISS_RATE_Z_METER = /*100;          /*/ 0.3;
 const float IMPOSSIBLE_YAW_X_Z_VALUE = 100.f; ///< Moving average is initiated by this value
-const float TARGET_Z_VALUE_METER = 0.6;
-const float MINIMAL_DISTANCE_VALUE_METER = 0.5;
+const float TARGET_DISTANCE_VALUE_METER = 0.6;
+const float MINIMAL_DISTANCE_VALUE_METER = 0.55;
 
 ofstream xFileToSave;                  ///< Debugging telemetry recording
 Mat xCameraMatrix, xDistCoefficients;  ///< Camera calibration settings
@@ -105,7 +105,7 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDis
 static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, uint16_t usShift, OUT float &fPeriod, OUT float &fAmplitude);
 static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatrix, OUT Mat &xDistCoefficients,
                                     OUT VideoCapture &xCaptureFrame, OUT Mat &xMarkerPoints);
-static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients,
+static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition, queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients,
                                          OUT float &fAvgYaw, OUT float &fAvgX, OUT float &fAvgZ, float &fMovingYaw, float fMovingX, float fMovingZ);
 static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float &fAvgYaw, float &fAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
                                       OUT float &fMovingAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon);
@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
 
     cout << "Count of frames = " + std::to_string(pxFramesToCalc.size()) << endl;
 
-    if ((prvYawTranslationCalculation(pxFramesToCalc, xMarkerPoints, xCameraMatrix, xDistCoefficients, OUT fAvgYaw,
+    if ((prvYawTranslationCalculation(eStatePosition, pxFramesToCalc, xMarkerPoints, xCameraMatrix, xDistCoefficients, OUT fAvgYaw,
                                       OUT fAvgX, OUT fAvgZ, fMovingAvgYaw_, fMovingAvgX_, fMovingAvgZ_) == false) &&
         (fMovingAvgYaw_ < IMPOSSIBLE_YAW_X_Z_VALUE) && (fMovingAvgX_ < IMPOSSIBLE_YAW_X_Z_VALUE) &&
         (fMovingAvgZ_ < IMPOSSIBLE_YAW_X_Z_VALUE))
@@ -340,8 +340,8 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDis
     ssCoefShift = (-1) * static_cast<int16_t>(floor((fTargetZ - fDistance) / (0.1) / fAmplitude));
   if (fDistance > fTargetZ)
     ssCoefShift = floor((fDistance - fTargetZ) / (0.1) / fAmplitude);
-  if (abs(ssCoefShift) > 3)
-    ssCoefShift = ssCoefShift > 0 ? 3 : -3;
+  if (abs(ssCoefShift) > 1)/***/
+    ssCoefShift = ssCoefShift > 0 ? 1 : -1;
 
   if (fabsf(fCoefRotation) > 0.5)
   {
@@ -450,7 +450,7 @@ static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatri
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /** @brief Yaw and translation calculation
  */
-static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients,
+static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition, queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients,
                                          OUT float &fAvgYaw, OUT float &fAvgX, OUT float &fAvgZ, float &fMovingYaw, float fMovingX, float fMovingZ)
 {
   bool ret = true;
@@ -541,7 +541,8 @@ static bool prvYawTranslationCalculation(queue<Mat> &pxFramesToCalc, cv::Mat &xM
     else
     {
 #ifdef DEBUG_SOFT
-      cout << "Missed Z is " << tvecs.at(0)[2] << endl;
+      if (eStatePosition == TEnumStatePosition::STATE_FORWARD)
+        cout << "Missed Z is " << tvecs.at(0)[2] << endl;
 #endif
     }
 
@@ -571,14 +572,14 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
                                       OUT float &fMovingAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon)
 {
   float fCoefRotation(0.f), fCoefTranslation(0.f); // Coefficients of rotation and translation
-  int16_t ssCoefShift(0);
+  int16_t ssCoefShift(0);  
   static float fYawForward_(0.f), fX_Forward_(0.f), fZ_Forward_(0.f); // Calculated values iat the point closest to the marker
   static vector<float> xAvgPeriodYaw_(0);                             // Vector of yaw moving average for one period, is calculated at the far point
   static vector<float> xAvgPeriodX_(0);                               // Vector of X moving average for one period, is calculated at the far point
   static vector<float> xAvgPeriodZ_(0);                               // Vector of Z moving average for one period, is calculated at the far point
   static float fPeriod_(0.f), fAmplitude_(0.f);
   static float fTargetYaw_(0.f), fTargetX_(0.f);
-  static float fTargetZ_(TARGET_Z_VALUE_METER);
+  static float fTargetZ_(TARGET_DISTANCE_VALUE_METER);
 
   /***/ static size_t nTemp(0), nTemp1(0);
 
@@ -682,7 +683,9 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
         --iter;
       if (*iter < IMPOSSIBLE_YAW_X_Z_VALUE)
         fTemp = *iter;
-      if (fTemp < IMPOSSIBLE_YAW_X_Z_VALUE)
+      // The first Z measurement os not into account 
+      /// @todo Correct if you first approach the a certain distance
+      if ((fTemp < IMPOSSIBLE_YAW_X_Z_VALUE) && (nMeasurement > 0)) 
         for (auto i = xAvgPeriodZ_.size(); i < COUNT_MEASUREMENT_FOR_MOVING_AVG; i++)
           xAvgPeriodZ_.push_back(fTemp);
     }
@@ -707,13 +710,16 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
     fMovingAvgZ = fSumTemp / ((pow(COUNT_MEASUREMENT_FOR_MOVING_AVG, 2.f) + COUNT_MEASUREMENT_FOR_MOVING_AVG) / 2);
 
     // Calculation of motion coefficients for stroller control unit
-    if (++nMeasurement >= COUNT_MEASUREMENT_FOR_MOVING_AVG)
+    if ((fTargetYaw_ < IMPOSSIBLE_YAW_X_Z_VALUE) && (fTargetX_ < IMPOSSIBLE_YAW_X_Z_VALUE))
+      nMeasurement++;
+    if (nMeasurement >= COUNT_MEASUREMENT_FOR_MOVING_AVG)
     {
 #ifdef TARGET_IS_CURRENT_POSITION
       if (nMeasurement == COUNT_MEASUREMENT_FOR_MOVING_AVG)
       {
         fTargetYaw_ = fMovingAvgYaw;
         fTargetX_ = fMovingAvgX;
+        nMeasurement++;
       }
 #endif
       if ((fabsf(fMovingAvgYaw) > FLOAT_EPSILON) && (fabsf(fMovingAvgX) > FLOAT_EPSILON) &&
@@ -722,6 +728,8 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
         float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
         prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingAvgX, fDistance, fTargetYaw_, fTargetX_, fTargetZ_,
                                           OUT fCoefRotation, OUT fCoefTranslation, OUT ssCoefShift, fPeriod_, fAmplitude_);
+        if (((1.5 * fMovingAvgX) > fMovingAvgZ) || (fZ_Forward_ > (IMPOSSIBLE_YAW_X_Z_VALUE - FLOAT_EPSILON)))
+          ssCoefShift = -1;
       }
     }        
 
@@ -768,8 +776,12 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
     break;
   }
 
-  /***/ cout << "Target yaw = " << fTargetYaw_ << " ( " << (fTargetYaw_ * DEGRES_IN_RAD) << " degres)"  << " ;  target X = " << fTargetX_ << endl;
+  /***/ cout << "Target yaw = " << fTargetYaw_ << " ( " << (fTargetYaw_ * DEGRES_IN_RAD) << " degres)"  << 
+                " ;  target X = " << fTargetX_ << " ( " << (fTargetX_ * 100.f) << " cm);" << endl;
 }
+
+
+
 
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /** @brief Debugging information
@@ -777,9 +789,11 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
 void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ, ofstream &xFileToSave,
                       float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift)
 {
+  float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
+
   cout << "Moving Yaw = " << fMovingAvgYaw << " ( " << (fMovingAvgYaw * DEGRES_IN_RAD) << " degres);" << endl;
   cout << "Moving X = " << fMovingAvgX << " ( " << (fMovingAvgX * 100.f) << " cm);" << endl;
-  cout << "Moving Z = " << fMovingAvgZ << " ( " << (fMovingAvgZ * 100.f) << " cm);" << endl;
+  cout << "Moving distance = " << fDistance << " ( " << (fDistance * 100.f) << " cm);" << endl;
   cout << "Coef rotation = " << fCoefRot << " ; Coef translation = " << fCoefTransl << " ; Coef shift = " << ssCoefShift << endl;
   cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
 
