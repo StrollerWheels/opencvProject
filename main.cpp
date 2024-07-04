@@ -110,6 +110,7 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDis
 static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, uint16_t usShift, OUT float &fPeriod, OUT float &fAmplitude);
 void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ, ofstream &xFileToSave,
                       float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift, float fTargetYaw, float fTargetX);
+bool prvCalculateTarget(queue<Mat> &pxFramesToCalc, OUT float &fYaw, OUT float &fX, OUT float &fZ);
 
 bool prvCalculateTarget(queue<Mat> &pxFramesToCalc, OUT float &fYaw, OUT float &fX, OUT float &fZ);
 
@@ -763,6 +764,162 @@ return_prvRoataionTranslationCalculation:
   return;
 }
 
+/** @brief Calculation of setpoint values by median average
+ * 
+*/
+bool prvCalculateTarget(queue<Mat> &pxFramesToCalc, OUT float &fYaw, OUT float &fX, OUT float &fZ,
+                        cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients)
+{
+  bool isRetSuccess(true);
+  Mat xFrameTemp1;
+  vector<int> xIdDetectMarker;                             // Vector of identifiers of the detected markers
+  vector<vector<Point2f>> xCornersMarker, xRejectedMarker; // Vector of detected marker corners
+  aruco::DetectorParameters xDetectorParams;
+    /***///xDetectorParams.cornerRefinementMethod = CORNER_REFINE_APRILTAG;
+  aruco::Dictionary dictionary = aruco::getPredefinedDictionary(/*aruco::DICT_ARUCO_MIP_36h12*/cv::aruco::DICT_5X5_50);/***/
+  static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
+  size_t nMarkers(0);                                                  // Number of found markers (must be 1)
+  double yaw(0), roll(0), pitch(0);
+  vector<float> xYawDetectArray;
+  vector<float> xX_DetectArray;
+  vector<float> xZ_DetectArray;
+
+  float fSumYaw(0.f), fSumX(0.f), fSumZ(0.f);
+  uint32_t ulYawNo(0), ulX_No(0), ulZ_No(0);
+
+  while (pxFramesToCalc.empty() == false)
+  {
+    // Position calculation
+    xFrameTemp1 = pxFramesToCalc.front();
+    try
+    {
+      xDetector_.detectMarkers(xFrameTemp1, xCornersMarker, xIdDetectMarker, xRejectedMarker); /// @warning Was exception!!!
+    }
+    catch (...)
+    {
+      cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+    }
+    /*terminate called after throwing an instance of 'cv::Exception'
+    what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
+    pxFramesToCalc.pop();
+    nMarkers = xCornersMarker.size();
+    vector<Vec3d> rvecs(nMarkers), tvecs(nMarkers);
+
+    if (xIdDetectMarker.empty() == false)
+      solvePnP(xMarkerPoints, xCornersMarker.at(0), xCameraMatrix, xDistCoefficients, rvecs.at(0), tvecs.at(0), false);
+    else
+      continue;
+
+    // Quaternion calculation
+    double r[] = {rvecs.at(0)[0], rvecs.at(0)[1], rvecs.at(0)[2]};
+    double t[] = {tvecs.at(0)[0], tvecs.at(0)[1], tvecs.at(0)[2]};
+    double lenVecRotation = sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+    r[0] = r[0] / lenVecRotation;
+    r[1] = r[1] / lenVecRotation;
+    r[2] = r[2] / lenVecRotation;
+    double angle = lenVecRotation / 2.f;
+    double quat[] = {cos(angle), sin(angle) * r[0], sin(angle) * r[1], sin(angle) * r[2]};
+
+    // Euler angles calculation
+    prvGetYawRollPitch(quat[0], quat[1], quat[2], quat[3], yaw, roll, pitch);
+
+    xYawDetectArray.push_back(yaw);
+    xX_DetectArray.push_back(tvecs.at(0)[0]);
+    xZ_DetectArray.push_back(tvecs.at(0)[2]);
+  }
+
+  // Median search
+  constexpr float SEARCH_RANGE_START_YAW = -10 / DEGRES_IN_RAD;
+  constexpr float SEARCH_RANGE_YAW = 20 / DEGRES_IN_RAD;
+  constexpr float SEARCH_WINDOW_WIDTH_YAW = MISS_RATE_YAW_RAD > (15.f / DEGRES_IN_RAD) ? (7.f / DEGRES_IN_RAD) : MISS_RATE_YAW_RAD;
+  constexpr float SEARCH_STEP_YAW = 2.f / DEGRES_IN_RAD;
+  const float SEARCH_RANGE_START_X = -0.5;
+  const float SEARCH_RANGE_X = 1.f;
+  constexpr float SEARCH_WINDOW_WIDTH_X = MISS_RATE_X_METER > 0.5 ? 0.2 : MISS_RATE_X_METER;
+  const float SEARCH_STEP_X = 0.1;
+  const float SEARCH_RANGE_START_Z = 0.3;
+  const float SEARCH_RANGE_Z = 1.f;
+  constexpr float SEARCH_WINDOW_WIDTH_Z = MISS_RATE_Z_METER > 0.5 ? 0.2 : MISS_RATE_Z_METER;
+  const float SEARCH_STEP_Z = 0.1;
+  std::map<float, size_t> xCountMedianYaw;
+  std::map<float, size_t> xCountMedianX;
+  std::map<float, size_t> xCountMedianZ;
+  size_t count(0);
+  // Counting the number of median values
+  for (float value = SEARCH_RANGE_START_YAW; value <= (SEARCH_RANGE_START_YAW + SEARCH_RANGE_YAW); value += SEARCH_STEP_YAW)
+  {
+    count = 0;
+    for (auto &v : xYawDetectArray)
+      if ((v > (value - SEARCH_STEP_YAW)) && (v < (value + SEARCH_STEP_YAW)))
+        count++;
+    xCountMedianYaw[value] = count;
+  }
+  for (float value = SEARCH_RANGE_START_X; value <= (SEARCH_RANGE_START_X + SEARCH_RANGE_X); value += SEARCH_STEP_X)
+  {
+    count = 0;
+    for (auto &v : xX_DetectArray)
+      if ((v > (value - SEARCH_STEP_X)) && (v < (value + SEARCH_STEP_X)))
+        count++;
+    xCountMedianX[value] = count;
+  }
+  for (float value = SEARCH_RANGE_START_Z; value <= (SEARCH_RANGE_START_Z + SEARCH_RANGE_Z); value += SEARCH_STEP_Z)
+  {
+    count = 0;
+    for (auto &v : xZ_DetectArray)
+      if ((v > (value - SEARCH_STEP_Z)) && (v < (value + SEARCH_STEP_Z)))
+        count++;
+    xCountMedianZ[count] = value;
+  }
+  // Finding the average values
+  auto medianValue = (xCountMedianYaw::end()-1)->first;
+  float fSum(0.f);
+  size_t count(0);
+  for (auto &v : xYaw_DetectArray)
+    if ((v > (medianValue - MISS_RATE_YAW_RAD)) && (v < (medianValue + MISS_RATE_YAW_RAD)))
+    {
+      count++;
+      fSum = fSum + v;
+    } 
+  if (count > 0)
+    fYaw = fSum / count;
+  else
+    isRetSuccess = false;
+  medianValue = (xCountMedianX::end()-1)->first;
+  fSum = 0.f;
+  count = 0;  
+  for (auto &v : xX_DetectArray)
+    if ((v > (medianValue - MISS_RATE_X_METER)) && (v < (medianValue + MISS_RATE_X_METER)))
+    {
+      count++;
+      fSum = fSum + v;
+    } 
+  if (count > 0)
+    fX = fSum / count;
+  else
+    isRetSuccess = false;
+  medianValue = (xCountMedianZ::end()-1)->first;
+  fSum = 0.f;
+  count = 0;  
+  for (auto &v : xZ_DetectArray)
+    if ((v > (medianValue - MISS_RATE_Z_METER)) && (v < (medianValue + MISS_RATE_Z_METER)))
+    {
+      count++;
+      fSum = fSum + v;
+    } 
+  if (count > 0)
+    fZ = fSum / count;
+  else
+    isRetSuccess = false;
+
+  
+#if DEBUG_SOFT > 2
+    xFileToSave << std::to_string(fYaw * DEGRES_IN_RAD) + "	" << std::to_string(fX)
+                << +" " << std::to_string(fZ) << endl;
+#endif
+  }
+
+  return isRetSuccess;
+}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
