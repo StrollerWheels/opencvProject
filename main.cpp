@@ -32,7 +32,6 @@
 
 #define TARGET_IS_CURRENT_POSITION
 
-// #define TARGET_IS_CURRENT_POSITION
 
 enum class TEnumStatePosition
 {
@@ -95,24 +94,29 @@ float fCoefTranslationDebug(0.f), fCoefRotationDebug(0.f); ///< To display in th
 int16_t ssCoefShiftDebug(0.f);
 #endif
 
-static bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients);
-static void prvGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &yaw, OUT double &roll, OUT double &pitch);
-static bool prvCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts);
+static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatrix, OUT Mat &xDistCoefficients,
+                                    OUT VideoCapture &xCaptureFrame, OUT Mat &xMarkerPoints);
 static void prvRiscBehavior(TEnumRiscBehavior eErrorCode, string sError);
+static bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients);
+static bool prvCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts);
+static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition, queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients,
+                                         OUT float &fAvgYaw, OUT float &fAvgX, OUT float &fAvgZ, float &fMovingYaw, float fMovingX, float fMovingZ);
+static void prvGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &yaw, OUT double &roll, OUT double &pitch);
+static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float &fAvgYaw, float &fAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
+                                      OUT float &fMovingAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon);                                      
 static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDistance, float &fTargetYaw, float &fTargetX,
                                               float &fTargetZ, OUT float &fCoefRotation, OUT float &fCoefTranslation,
                                               OUT int16_t &ssCoefShift, float &fPeriod, float &fAmplitude);
 static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, uint16_t usShift, OUT float &fPeriod, OUT float &fAmplitude);
-static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatrix, OUT Mat &xDistCoefficients,
-                                    OUT VideoCapture &xCaptureFrame, OUT Mat &xMarkerPoints);
-static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition, queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients,
-                                         OUT float &fAvgYaw, OUT float &fAvgX, OUT float &fAvgZ, float &fMovingYaw, float fMovingX, float fMovingZ);
-static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float &fAvgYaw, float &fAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
-                                      OUT float &fMovingAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon);
 void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ, ofstream &xFileToSave,
                       float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift, float fTargetYaw, float fTargetX);
 
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+bool prvCalculateTarget(queue<Mat> &pxFramesToCalc, OUT float &fYaw, OUT float &fX, OUT float &fZ);
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 int main(int argc, char *argv[])
 {
   prvInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
@@ -141,6 +145,9 @@ int main(int argc, char *argv[])
       if (prvCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
         prvRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
     }
+
+    // Pause to allow the levels on the pins to be set
+    this_thread::sleep_for(2ms);
 
     // Closes point to the marker
     while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
@@ -219,194 +226,10 @@ int main(int argc, char *argv[])
   return 0;
 }
 
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-static bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients)
-{
-  cv::FileStorage fs(filename, cv::FileStorage::READ);
-  if (!fs.isOpened())
-    return false;
-  fs["camera_matrix"] >> xCameraMatrix;
-  fs["distortion_coefficients"] >> xDistCoefficients;
-  return true;
-}
 
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-static void prvGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &yaw, OUT double &roll, OUT double &pitch)
-{
-  double dTestValue = qx * qy + qz * q0;
-
-  if (dTestValue > 0.499) // then-- singularity at north pole
-  {
-    yaw = (2 * atan2(qx, q0));
-    roll = 0;
-    pitch = PI / 2;
-  }
-  if (dTestValue < -0.499) // then-- singularity at south pole
-  {
-    yaw = (-2 * atan2(qx, q0));
-    roll = 0;
-    pitch = PI / 2;
-  }
-  if ((dTestValue <= 0.499) || (dTestValue >= -0.499))
-  {
-    yaw = atan2(2 * (qy * q0 - qx * qz), 1 - 2 * (qy * qy + qz * qz));
-    roll = atan2(2 * (qx * q0 - qy * qz), 1 - 2 * (qx * qx + qz * qz));
-    pitch = asin(2 * dTestValue);
-  }
-}
-
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-/** @brief Frame capture
- */
-static bool prvCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts)
-{
-  bool ret(true);
-
-  if (xCapture.read(frame) == false)
-  {
-    ret = false;
-    // First open the camera
-    do
-    {
-      this_thread::sleep_for(200ms);
-      xCapture.open(CAMERA_NUMBER, cv::CAP_V4L2);
-      if (xCapture.isOpened() == false)
-      {
-        cout << "Cannot open camera" << endl;
-        continue;
-      }
-
-      cout << "Cannot read a xFrameCommon" << endl;
-    } while ((xCapture.read(frame) == false) && (--nAttempts > 0));
-  }
-
-  if (nAttempts > 0)
-    ret = true;
-
-  return ret;
-}
-
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-static void prvRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
-{
-  switch (eErrorCode)
-  {
-  case TEnumRiscBehavior::RISC_WRONG_INPUT_COMBINATION:
-    cout << " ! ! ! Wrong input combination ! ! ! " << endl;
-    break;
-  case TEnumRiscBehavior::RISC_CAMERA_PROBLEM:
-    cout << " ! ! ! Camera problems ! ! ! " << endl;
-    break;
-  case TEnumRiscBehavior::RISC_INVALID_CAMERA_FILE:
-    cout << " ! ! ! Invalid camera file ! ! ! " << endl;
-  case TEnumRiscBehavior::RISC_NOT_SETUP_SPI:
-    cout << " ! ! ! Not setup SPI ! ! ! " << endl;
-  case TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET:
-    cout << " ! ! ! PACKET SENDING ERROR ! ! ! " << endl;
-  default:
-    cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
-    break;
-  }
-
-  cout << sError << endl;
-
-  for (;;)
-    asm("NOP");
-}
-
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDistance, float &fTargetYaw, float &fTargetX,
-                                              float &fTargetZ, OUT float &fCoefRotation, OUT float &fCoefTranslation,
-                                              OUT int16_t &ssCoefShift, float &fPeriod, float &fAmplitude)
-{
-  static float fIntegralErrorYaw(0.f), fIntegralErrorX(0.f);
-  static bool isShiftCalcNow(false);
-  float fErrorYaw = fTargetYaw - fYaw;
-  float fErrorX = fTargetX - fX;
-
-  if ((fYaw == IMPOSSIBLE_YAW_X_Z_VALUE) && (fX == IMPOSSIBLE_YAW_X_Z_VALUE))
-    goto return_prvRoataionTranslationCalculation;
-
-  // Calculation integral errors
-  fIntegralErrorYaw = fIntegralErrorYaw + fErrorYaw;
-  fIntegralErrorX = fIntegralErrorX + fErrorX;
-  // Calculation translation and rotation coefficients
-  fCoefRotation = fErrorYaw * COEF_PROPORTIONAL_YAW + fIntegralErrorYaw * COEF_INTEGRAL_YAW * fPeriod;
-  fCoefTranslation = fErrorX * COEF_PROPORTIONAL_X + fIntegralErrorX * COEF_INTEGRAL_X * fPeriod;
-
-  // Calculation shift coefficient
-  if (fDistance < MINIMAL_DISTANCE_VALUE_METER)
-    ssCoefShift = (-1) * static_cast<int16_t>(floor((fTargetZ - fDistance) / (0.1) / fAmplitude));
-  if (fDistance > fTargetZ)
-    ssCoefShift = floor((fDistance - fTargetZ) / (0.1) / fAmplitude);
-  if (abs(ssCoefShift) > 1)/***/
-    ssCoefShift = ssCoefShift > 0 ? 1 : -1;
-  if (isShiftCalcNow == false)
-    ssCoefShift = 0;
-  isShiftCalcNow = isShiftCalcNow == true ? false : true;
-
-  if (fabsf(fCoefRotation) > 0.5)
-  {
-    cout << "!!! Rotation coefficient more than 50 per cent !!!" << endl;
-    fCoefRotation = fCoefRotation > 0.f ? 0.5 : -0.5;
-  }
-  if (fabsf(fCoefTranslation) > 0.5)
-  {
-    cout << "!!! Translation coefficient more than 50 per cent !!!" << endl;
-    fCoefTranslation = fCoefTranslation > 0.f ? 0.5 : -0.5;
-  }
-
-return_prvRoataionTranslationCalculation:
-  return;
-}
-
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude)
-{
-  bool ret(true);
-  int res(0);
-  string sError;
-  static TProtocolInStroller xPacketOut_;
-  TProtocolInAruco *pxPacketIn = reinterpret_cast<TProtocolInAruco *>(&xPacketOut_);
-  static bool isResetWas_(true);
-
-  xPacketOut_.usPreambule = 0x5555;
-  xPacketOut_.ucIdPacket = 0x01;
-  xPacketOut_.fRotation = fCoefRotation;
-  xPacketOut_.fTranslation = fCoefTranslation;
-  xPacketOut_.ssShift = ssShift;
-  xPacketOut_.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_) - 2);
-
-  errno = 0;
-  if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
-    prvRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
-
-  /***/ static size_t all = 0;
-  all++;
-  if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
-  {
-    /***/ static size_t err = 0;
-    ret = false;
-    cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
-  }
-  else
-  {
-    if ((pxPacketIn->ucIdPacket == ID_PACKET_RESET_WAS) && (isResetWas_ == false))
-    {
-      nMeasurement = 0;
-      isResetWas_ = true;
-    }
-    fPeriod = pxPacketIn->fPeriod;
-    fAmplitude = pxPacketIn->fAmplitude;
-  }
-
-  if (nMeasurement >= COUNT_MEASUREMENT_FOR_MOVING_AVG)
-    isResetWas_ = false;
-
-  return ret;
-}
-
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatrix, OUT Mat &xDistCoefficients,
                                     OUT VideoCapture &xCaptureFrame, OUT Mat &xMarkerPoints)
 {
@@ -449,11 +272,94 @@ static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatri
   xMarkerPoints.ptr<Vec3f>(0)[3] = Vec3f(-MARKER_LENGTH / 2.f, -MARKER_LENGTH / 2.f, 0);
 }
 
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+static void prvRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
+{
+  switch (eErrorCode)
+  {
+  case TEnumRiscBehavior::RISC_WRONG_INPUT_COMBINATION:
+    cout << " ! ! ! Wrong input combination ! ! ! " << endl;
+    break;
+  case TEnumRiscBehavior::RISC_CAMERA_PROBLEM:
+    cout << " ! ! ! Camera problems ! ! ! " << endl;
+    break;
+  case TEnumRiscBehavior::RISC_INVALID_CAMERA_FILE:
+    cout << " ! ! ! Invalid camera file ! ! ! " << endl;
+  case TEnumRiscBehavior::RISC_NOT_SETUP_SPI:
+    cout << " ! ! ! Not setup SPI ! ! ! " << endl;
+  case TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET:
+    cout << " ! ! ! PACKET SENDING ERROR ! ! ! " << endl;
+  default:
+    cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
+    break;
+  }
+
+  cout << sError << endl;
+
+  for (;;)
+    asm("NOP");
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+static bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients)
+{
+  cv::FileStorage fs(filename, cv::FileStorage::READ);
+  if (!fs.isOpened())
+    return false;
+  fs["camera_matrix"] >> xCameraMatrix;
+  fs["distortion_coefficients"] >> xDistCoefficients;
+  return true;
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/** @brief Frame capture
+ */
+static bool prvCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts)
+{
+  bool ret(true);
+
+  if (xCapture.read(frame) == false)
+  {
+    ret = false;
+    // First open the camera
+    do
+    {
+      this_thread::sleep_for(200ms);
+      xCapture.open(CAMERA_NUMBER, cv::CAP_V4L2);
+      if (xCapture.isOpened() == false)
+      {
+        cout << "Cannot open camera" << endl;
+        continue;
+      }
+
+      cout << "Cannot read a xFrameCommon" << endl;
+    } while ((xCapture.read(frame) == false) && (--nAttempts > 0));
+  }
+
+  if (nAttempts > 0)
+    ret = true;
+
+  return ret;
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /** @brief Yaw and translation calculation
  */
-static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition, queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients,
-                                         OUT float &fAvgYaw, OUT float &fAvgX, OUT float &fAvgZ, float &fMovingYaw, float fMovingX, float fMovingZ)
+static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition, queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints, 
+                                         Mat &xCameraMatrix, Mat &xDistCoefficients, OUT float &fAvgYaw, OUT float &fAvgX, 
+                                         OUT float &fAvgZ, float &fMovingYaw, float fMovingX, float fMovingZ)
 {
   bool ret = true;
   Mat xFrameTemp1;
@@ -567,7 +473,38 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition, que
   return ret;
 }
 
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+static void prvGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &yaw, OUT double &roll, OUT double &pitch)
+{
+  double dTestValue = qx * qy + qz * q0;
+
+  if (dTestValue > 0.499) // then-- singularity at north pole
+  {
+    yaw = (2 * atan2(qx, q0));
+    roll = 0;
+    pitch = PI / 2;
+  }
+  if (dTestValue < -0.499) // then-- singularity at south pole
+  {
+    yaw = (-2 * atan2(qx, q0));
+    roll = 0;
+    pitch = PI / 2;
+  }
+  if ((dTestValue <= 0.499) || (dTestValue >= -0.499))
+  {
+    yaw = atan2(2 * (qy * q0 - qx * qz), 1 - 2 * (qy * qy + qz * qz));
+    roll = atan2(2 * (qx * q0 - qy * qz), 1 - 2 * (qx * qx + qz * qz));
+    pitch = asin(2 * dTestValue);
+  }
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /** @brief Moving average and send packet to stroller
  */
 static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float &fAvgYaw, float &fAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
@@ -778,9 +715,266 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition, float 
 }
 
 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDistance, float &fTargetYaw, float &fTargetX,
+                                              float &fTargetZ, OUT float &fCoefRotation, OUT float &fCoefTranslation,
+                                              OUT int16_t &ssCoefShift, float &fPeriod, float &fAmplitude)
+{
+  static float fIntegralErrorYaw(0.f), fIntegralErrorX(0.f);
+  static bool isShiftCalcNow(false);
+  float fErrorYaw = fTargetYaw - fYaw;
+  float fErrorX = fTargetX - fX;
+
+  if ((fYaw == IMPOSSIBLE_YAW_X_Z_VALUE) && (fX == IMPOSSIBLE_YAW_X_Z_VALUE))
+    goto return_prvRoataionTranslationCalculation;
+
+  // Calculation integral errors
+  fIntegralErrorYaw = fIntegralErrorYaw + fErrorYaw;
+  fIntegralErrorX = fIntegralErrorX + fErrorX;
+  // Calculation translation and rotation coefficients
+  fCoefRotation = fErrorYaw * COEF_PROPORTIONAL_YAW + fIntegralErrorYaw * COEF_INTEGRAL_YAW * fPeriod;
+  fCoefTranslation = fErrorX * COEF_PROPORTIONAL_X + fIntegralErrorX * COEF_INTEGRAL_X * fPeriod;
+
+  // Calculation shift coefficient
+  if (fDistance < MINIMAL_DISTANCE_VALUE_METER)
+    ssCoefShift = (-1) * static_cast<int16_t>(floor((fTargetZ - fDistance) / (0.1) / fAmplitude));
+  if (fDistance > fTargetZ)
+    ssCoefShift = floor((fDistance - fTargetZ) / (0.1) / fAmplitude);
+  if (abs(ssCoefShift) > 1)/***/
+    ssCoefShift = ssCoefShift > 0 ? 1 : -1;
+  if (isShiftCalcNow == false)
+    ssCoefShift = 0;
+  isShiftCalcNow = isShiftCalcNow == true ? false : true;
+
+  if (fabsf(fCoefRotation) > 0.5)
+  {
+    cout << "!!! Rotation coefficient more than 50 per cent !!!" << endl;
+    fCoefRotation = fCoefRotation > 0.f ? 0.5 : -0.5;
+  }
+  if (fabsf(fCoefTranslation) > 0.5)
+  {
+    cout << "!!! Translation coefficient more than 50 per cent !!!" << endl;
+    fCoefTranslation = fCoefTranslation > 0.f ? 0.5 : -0.5;
+  }
+
+return_prvRoataionTranslationCalculation:
+  return;
+}
 
 
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude)
+{
+  bool ret(true);
+  int res(0);
+  string sError;
+  static TProtocolInStroller xPacketOut_;
+  TProtocolInAruco *pxPacketIn = reinterpret_cast<TProtocolInAruco *>(&xPacketOut_);
+  static bool isResetWas_(true);
+
+  xPacketOut_.usPreambule = 0x5555;
+  xPacketOut_.ucIdPacket = 0x01;
+  xPacketOut_.fRotation = fCoefRotation;
+  xPacketOut_.fTranslation = fCoefTranslation;
+  xPacketOut_.ssShift = ssShift;
+  xPacketOut_.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_) - 2);
+
+  errno = 0;
+  if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
+    prvRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
+
+  /***/ static size_t all = 0;
+  all++;
+  if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
+  {
+    /***/ static size_t err = 0;
+    ret = false;
+    cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
+  }
+  else
+  {
+    if ((pxPacketIn->ucIdPacket == ID_PACKET_RESET_WAS) && (isResetWas_ == false))
+    {
+      nMeasurement = 0;
+      isResetWas_ = true;
+    }
+    fPeriod = pxPacketIn->fPeriod;
+    fAmplitude = pxPacketIn->fAmplitude;
+  }
+
+  if (nMeasurement >= COUNT_MEASUREMENT_FOR_MOVING_AVG)
+    isResetWas_ = false;
+
+  return ret;
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/** @brief Calculation of setpoint values by median average
+ * 
+*/
+bool prvCalculateTarget(queue<Mat> &pxFramesToCalc, OUT float &fYaw, OUT float &fX, OUT float &fZ,
+                        cv::Mat &xMarkerPoints, Mat &xCameraMatrix, Mat &xDistCoefficients)
+{
+  bool isRetSuccess(true);
+  Mat xFrameTemp1;
+  vector<int> xIdDetectMarker;                             // Vector of identifiers of the detected markers
+  vector<vector<Point2f>> xCornersMarker, xRejectedMarker; // Vector of detected marker corners
+  aruco::DetectorParameters xDetectorParams;
+    /***///xDetectorParams.cornerRefinementMethod = CORNER_REFINE_APRILTAG;
+  aruco::Dictionary dictionary = aruco::getPredefinedDictionary(/*aruco::DICT_ARUCO_MIP_36h12*/cv::aruco::DICT_5X5_50);/***/
+  static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
+  size_t nMarkers(0);                                                  // Number of found markers (must be 1)
+  double yaw(0), roll(0), pitch(0);
+  vector<float> xYawDetectArray;
+  vector<float> xX_DetectArray;
+  vector<float> xZ_DetectArray;
+
+  float fSumYaw(0.f), fSumX(0.f), fSumZ(0.f);
+  uint32_t ulYawNo(0), ulX_No(0), ulZ_No(0);
+
+  while (pxFramesToCalc.empty() == false)
+  {
+    // Position calculation
+    xFrameTemp1 = pxFramesToCalc.front();
+    try
+    {
+      xDetector_.detectMarkers(xFrameTemp1, xCornersMarker, xIdDetectMarker, xRejectedMarker); /// @warning Was exception!!!
+    }
+    catch (...)
+    {
+      cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+    }
+    /*terminate called after throwing an instance of 'cv::Exception'
+    what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
+    pxFramesToCalc.pop();
+    nMarkers = xCornersMarker.size();
+    vector<Vec3d> rvecs(nMarkers), tvecs(nMarkers);
+
+    if (xIdDetectMarker.empty() == false)
+      solvePnP(xMarkerPoints, xCornersMarker.at(0), xCameraMatrix, xDistCoefficients, rvecs.at(0), tvecs.at(0), false);
+    else
+      continue;
+
+    // Quaternion calculation
+    double r[] = {rvecs.at(0)[0], rvecs.at(0)[1], rvecs.at(0)[2]};
+    double t[] = {tvecs.at(0)[0], tvecs.at(0)[1], tvecs.at(0)[2]};
+    double lenVecRotation = sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+    r[0] = r[0] / lenVecRotation;
+    r[1] = r[1] / lenVecRotation;
+    r[2] = r[2] / lenVecRotation;
+    double angle = lenVecRotation / 2.f;
+    double quat[] = {cos(angle), sin(angle) * r[0], sin(angle) * r[1], sin(angle) * r[2]};
+
+    // Euler angles calculation
+    prvGetYawRollPitch(quat[0], quat[1], quat[2], quat[3], yaw, roll, pitch);
+
+    xYawDetectArray.push_back(yaw);
+    xX_DetectArray.push_back(tvecs.at(0)[0]);
+    xZ_DetectArray.push_back(tvecs.at(0)[2]);
+  }
+
+  // Median search
+  constexpr float SEARCH_RANGE_START_YAW = -10.f / DEGRES_IN_RAD;
+  constexpr float SEARCH_RANGE_YAW = 20.f / DEGRES_IN_RAD;
+  constexpr float SEARCH_WINDOW_WIDTH_YAW = MISS_RATE_YAW_RAD > (15.f / DEGRES_IN_RAD) ? (7.f / DEGRES_IN_RAD) : MISS_RATE_YAW_RAD;
+  constexpr float SEARCH_STEP_YAW = 2.f / DEGRES_IN_RAD;
+  const float SEARCH_RANGE_START_X = -0.5;
+  const float SEARCH_RANGE_X = 1.f;
+  constexpr float SEARCH_WINDOW_WIDTH_X = MISS_RATE_X_METER > 0.5 ? 0.2 : MISS_RATE_X_METER;
+  const float SEARCH_STEP_X = 0.1;
+  const float SEARCH_RANGE_START_Z = 0.3;
+  const float SEARCH_RANGE_Z = 1.f;
+  constexpr float SEARCH_WINDOW_WIDTH_Z = MISS_RATE_Z_METER > 0.5 ? 0.2 : MISS_RATE_Z_METER;
+  const float SEARCH_STEP_Z = 0.1;
+  std::map<size_t, float> xCountMedianYaw;
+  std::map<size_t, float> xCountMedianX;
+  std::map<size_t, float> xCountMedianZ;
+  size_t count(0);
+  // Counting the number of median values
+  for (float value = SEARCH_RANGE_START_YAW; value <= (SEARCH_RANGE_START_YAW + SEARCH_RANGE_YAW); value += SEARCH_STEP_YAW)
+  {
+    count = 0;
+    for (auto &v : xYawDetectArray)
+      if ((v > (value - SEARCH_STEP_YAW)) && (v < (value + SEARCH_STEP_YAW)))
+        count++;
+    xCountMedianYaw[count] = value;
+  }
+  for (float value = SEARCH_RANGE_START_X; value <= (SEARCH_RANGE_START_X + SEARCH_RANGE_X); value += SEARCH_STEP_X)
+  {
+    count = 0;
+    for (auto &v : xX_DetectArray)
+      if ((v > (value - SEARCH_STEP_X)) && (v < (value + SEARCH_STEP_X)))
+        count++;
+    xCountMedianX[count] = value;
+  }
+  for (float value = SEARCH_RANGE_START_Z; value <= (SEARCH_RANGE_START_Z + SEARCH_RANGE_Z); value += SEARCH_STEP_Z)
+  {
+    count = 0;
+    for (auto &v : xZ_DetectArray)
+      if ((v > (value - SEARCH_STEP_Z)) && (v < (value + SEARCH_STEP_Z)))
+        count++;
+    xCountMedianZ[count] = value;
+  }
+  // Finding the average values
+  auto medianValue = (xCountMedianYaw::end()-1)->second;
+  float fSum(0.f);
+  count = 0;
+  for (auto &v : xYaw_DetectArray)
+    if ((v > (medianValue - MISS_RATE_YAW_RAD)) && (v < (medianValue + MISS_RATE_YAW_RAD)))
+    {
+      count++;
+      fSum = fSum + v;
+    } 
+  if (count > 0)
+    fYaw = fSum / count;
+  else
+    isRetSuccess = false;
+  medianValue = (xCountMedianX::end()-1)->second;
+  fSum = 0.f;
+  count = 0;  
+  for (auto &v : xX_DetectArray)
+    if ((v > (medianValue - MISS_RATE_X_METER)) && (v < (medianValue + MISS_RATE_X_METER)))
+    {
+      count++;
+      fSum = fSum + v;
+    } 
+  if (count > 0)
+    fX = fSum / count;
+  else
+    isRetSuccess = false;
+  medianValue = (xCountMedianZ::end()-1)->second;
+  fSum = 0.f;
+  count = 0;  
+  for (auto &v : xZ_DetectArray)
+    if ((v > (medianValue - MISS_RATE_Z_METER)) && (v < (medianValue + MISS_RATE_Z_METER)))
+    {
+      count++;
+      fSum = fSum + v;
+    } 
+  if (count > 0)
+    fZ = fSum / count;
+  else
+    isRetSuccess = false;
+  
+#if DEBUG_SOFT > 2
+    xFileToSave << std::to_string(fYaw * DEGRES_IN_RAD) + "	" << std::to_string(fX)
+                << +" " << std::to_string(fZ) << endl;
+#endif  
+
+  return isRetSuccess;
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /** @brief Debugging information
  */
 void prvDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ, ofstream &xFileToSave,
