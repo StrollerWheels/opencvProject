@@ -800,12 +800,12 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   bool ret(true);
   int res(0);
   string sError;
-  static TProtocolInStroller xPacketOut_;
-  TProtocolInAruco *pxPacketIn = reinterpret_cast<TProtocolInAruco *>(&xPacketOut_);
+  static TProtocolInWcuMotionCmd xPacketOut_;
+  TProtocolInOuCondition *pxPacketIn = reinterpret_cast<TProtocolInOuCondition *>(&xPacketOut_);
   static bool isResetWas_(true);
 
-  xPacketOut_.usPreambule = 0x5555;
-  xPacketOut_.ucIdPacket = 0x01;
+  xPacketOut_.usPreambule = PREAMBULE_IN_WCU;
+  xPacketOut_.ucIdPacket = ID_PACKET_IN_WCU_MOTION_CMD;
   xPacketOut_.fRotation = fCoefRotation;
   xPacketOut_.fTranslation = fCoefTranslation;
   xPacketOut_.ssShift = ssShift;
@@ -825,7 +825,7 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   }
   else
   {
-    if ((pxPacketIn->ucIdPacket == ID_PACKET_RESET_WAS) && (isResetWas_ == false))
+    if ((pxPacketIn->ucIdPacket == ID_PACKET_IN_OU_RESET_WAS) && (isResetWas_ == false))
     {
       nMeasurement = 0;
       isResetWas_ = true;
