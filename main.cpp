@@ -440,7 +440,7 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     fCorrelatedX = static_cast<float>(tvecs.at(0)[0]);
     if ((MovingAvgYaw < (IMPOSSIBLE_YAW_X_Z_VALUE - FLOAT_EPSILON)) && (fTargetYaw < (IMPOSSIBLE_YAW_X_Z_VALUE - FLOAT_EPSILON)) &&
         (fMovingZ < (IMPOSSIBLE_YAW_X_Z_VALUE - FLOAT_EPSILON)))
-      fCorrelatedX = fCorrelatedX - (MovingAvgYaw - fTargetYaw) * (fMovingAvgZ * 0.03491); // 0.03491 = tg(1) * 2
+      fCorrelatedX = fCorrelatedX - (MovingAvgYaw - fTargetYaw) * (fMovingAvgZ * 0.04364); // 0.04364 = tg(1) * 2.5
 
     if (((fabsf(fCorrelatedX - fMovingX) < MISS_RATE_X_METER) && (fabsf(fMovingX) < 99.f)) || 
         (fabsf(fMovingX) > (IMPOSSIBLE_YAW_X_Z_VALUE - 1.f)))
@@ -676,6 +676,16 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
                            xMarkerPoints, xCameraMatrix, xDistCoefficients);
         fTargetYaw_ = fMovingAvgYaw;
         fTargetX_ = fMovingAvgX;
+        // Maybe we do not need it here
+        xAvgPeriodYaw_.clear();
+        xAvgPeriodX_.clear();
+        xAvgPeriodZ_.clear();
+        while (xAvgPeriodYaw_.size() < COUNT_MEASUREMENT_FOR_MOVING_AVG)
+          xAvgPeriodYaw_.push_back(fMovingAvgYaw);
+        while (xAvgPeriodX_.size() < COUNT_MEASUREMENT_FOR_MOVING_AVG)
+          xAvgPeriodX_.push_back(fMovingAvgX);
+        while (xAvgPeriodZ_.size() < COUNT_MEASUREMENT_FOR_MOVING_AVG)
+          xAvgPeriodZ_.push_back(fMovingAvgZ);
         nMeasurement++;
       }
 #endif
