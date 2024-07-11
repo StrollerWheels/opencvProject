@@ -47,6 +47,7 @@ enum class TEnumRiscBehavior
   RISC_INVALID_CAMERA_FILE,
   RISC_NOT_SETUP_SPI,
   RISC_CANNOT_SEND_SPI_PACKET,
+  RISC_CANNOT_CALC_TRAGET,
 };
 
 using namespace std;
@@ -73,7 +74,8 @@ const float COEF_PROPORTIONAL_X = /***/2.f;
 const float COEF_INTEGRAL_X = /***/0.01;
 const float COEF_DIFFERENTIAL_X = 0.f;
 
-const size_t COUNT_FRAMES = 5;
+const size_t COUNT_FRAMES_TO_CALC = 5;
+const size_t COUNT_FRAMES_TO_CALC_TARGET = 50;
 
 const size_t COUNT_MEASUREMENT_FOR_MOVING_AVG = 3;
 constexpr float MISS_RATE_YAW_GRAD = /*400.999999999; /*/ 6.999999999;
@@ -96,6 +98,20 @@ uint32_t nMeasurement(0);              // Count of measurement
 float fCoefTranslationDebug(0.f), fCoefRotationDebug(0.f); ///< To display in the terminal when debugging
 int16_t ssCoefShiftDebug(0.f);
 #endif
+
+static vector<float> xAvgPeriodYaw_(0);                             // Vector of yaw moving average for one period, is calculated at the far point
+static vector<float> xAvgPeriodX_(0);                               // Vector of X moving average for one period, is calculated at the far point
+static vector<float> xAvgPeriodZ_(0);                               // Vector of Z moving average for one period, is calculated at the far point
+static float fMovingAvgYaw_(IMPOSSIBLE_YAW_X_Z_VALUE), fMovingAvgX_(IMPOSSIBLE_YAW_X_Z_VALUE);             ///< Moving average value
+static float fMovingAvgZ_(IMPOSSIBLE_YAW_X_Z_VALUE);
+static float fTargetYaw_(IMPOSSIBLE_YAW_X_Z_VALUE);
+static float fTargetX_(IMPOSSIBLE_YAW_X_Z_VALUE);
+static float fTargetZ_(IMPOSSIBLE_YAW_X_Z_VALUE);
+static queue<Mat> pxFramesForward_;
+static queue<Mat> pxFramesBack_;
+static queue<Mat> pxFramesToCalc_;                                         ///< Captured frames at the points of trajectory extremum
+static TEnumStatePosition eStatePosition_(TEnumStatePosition::STATE_NONE); ///< Wheelchair position: at the nearest or farthest point from the marker, or between them
+static bool isFirstRun_ = true;
 
 static void prvInitializationSystem(ofstream &xFileToSave, OUT Mat &xCameraMatrix, OUT Mat &xDistCoefficients,
                                     OUT VideoCapture &xCaptureFrame, OUT Mat &xMarkerPoints);
@@ -126,15 +142,7 @@ int main(int argc, char *argv[])
 {
   Mat xFrameCommon, xFrameTemp;                                                                              // Captured frames
   float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
-  size_t nFrameToTarget(0);
-  static float fMovingAvgYaw_(IMPOSSIBLE_YAW_X_Z_VALUE), fMovingAvgX_(IMPOSSIBLE_YAW_X_Z_VALUE);             ///< Moving average value
-  static float fMovingAvgZ_(IMPOSSIBLE_YAW_X_Z_VALUE);
-  static float fTargetYaw_(IMPOSSIBLE_YAW_X_Z_VALUE);
-  static queue<Mat> pxFramesForward_;
-  static queue<Mat> pxFramesBack_;
-  static queue<Mat> pxFramesToCalc_;                                         ///< Captured frames at the points of trajectory extremum
-  static TEnumStatePosition eStatePosition_(TEnumStatePosition::STATE_NONE); ///< Wheelchair position: at the nearest or farthest point from the marker, or between them
-  static bool isFirstRun_ = true;
+
 
   prvInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
 
@@ -157,14 +165,67 @@ int main(int argc, char *argv[])
     // Pause to allow the levels on the pins to be set
     this_thread::sleep_for(2ms);
 
+//  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+    // Target caluclation
     if (isFirstRun_ == true)
     {
       isFirstRun_ = false;
-      while
+      // Frames capture
+      while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
+           (pxFramesToCalc_.size() < COUNT_FRAMES_TO_CALC_TARGET))
+      {
+        if (prvCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
+          prvRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame")
+        else
+          pxFramesToCalc_.push_back(xFrameCommon);
+      }
+      if ((pxFramesToCalc_.size() < COUNT_FRAMES_TO_CALC_TARGET) ||
+          (prvCalculateTarget(pxFramesToCalc_, OUT fMovingAvgYaw_, OUT fMovingAvgX_, OUT fMovingAvgZ_,
+                         xMarkerPoints, xCameraMatrix, xDistCoefficients) == false))
+        prvRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_CALC_TRAGET, "Unable to calculation the targets");
+      // You can remove it: the vector is already cleared at the beginning of the loop
+      while (pxFramesToCalc_.empty() == false)
+        pxFramesToCalc_.pop();
+
+      // Targets initialization
+      fTargetYaw_ = fMovingAvgYaw;
+      fTargetX_ = fMovingAvgX;
+      fTargetZ_ = TARGET_DISTANCE_VALUE_METER;
+
+      // Memorization of telemetry vectors
+      xAvgPeriodYaw_.clear();
+      xAvgPeriodX_.clear();
+      xAvgPeriodZ_.clear();
+      while (xAvgPeriodYaw_.size() < COUNT_MEASUREMENT_FOR_MOVING_AVG)
+        xAvgPeriodYaw_.push_back(fMovingAvgYaw);
+      while (xAvgPeriodX_.size() < COUNT_MEASUREMENT_FOR_MOVING_AVG)
+        xAvgPeriodX_.push_back(fMovingAvgX);
+      while (xAvgPeriodZ_.size() < COUNT_MEASUREMENT_FOR_MOVING_AVG)
+        xAvgPeriodZ_.push_back(fMovingAvgZ); 
+
+      // Memorization of forward values
+      TEnumStatePosition eStateTemp(TEnumStatePosition::STATE_FORWARD);
+      float fTemp(fMovingAvgYaw_), fTemp1(fMovingAvgX_), float fTemp2(fMovingAvgZ_), fTemp3(0.f);
+      Mat xFrameTemp; 
+      prvMovingAvgAndSendPacket(eStateTemp, fTemp, fTemp1, fTemp2, fTemp3, fTemp3, fTemp3, xCaptureFrame, xFrameTemp);
+      
+      // Sending three identical pacckets because there are often transmission errors
+      fTemp = fTemp1 = fTemp2 = fTemp3 = 0.f;
+      int16_t ssTemp(0);    
+      for (size_t i = 0; i < 3; i++)
+      {
+        prvSendPacketToStroller(FTemp, fTemp1, ssTemp, fTemp2, fTemp3);
+        this_thread::sleep_for(5ms);
+      }
+
+      continue;
     }
+//  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =    
+
+
     // Closes point to the marker
     while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
-           (pxFramesForward_.size() < COUNT_FRAMES))
+           (pxFramesForward_.size() < COUNT_FRAMES_TO_CALC))
     {
       if (prvCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
         prvRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
@@ -176,7 +237,7 @@ int main(int argc, char *argv[])
 
     // Farthest point from the marker
     while ((digitalRead(NO_PIN_BACK) == HIGH) && (digitalRead(NO_PIN_FORWARD) == LOW) &&
-           (pxFramesBack_.size() < COUNT_FRAMES))
+           (pxFramesBack_.size() < COUNT_FRAMES_TO_CALC))
     {
       if (prvCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
         prvRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
@@ -198,7 +259,7 @@ int main(int argc, char *argv[])
     switch (eStatePosition_)
     {
     case TEnumStatePosition::STATE_FORWARD:
-      if (pxFramesForward_.size() < COUNT_FRAMES)
+      if (pxFramesForward_.size() < COUNT_FRAMES_TO_CALC)
         pxFramesToCalc_.push(xFrameCommon);
       if (nMeasurement <= COUNT_MEASUREMENT_FOR_MOVING_AVG) /***/
         pxFramesToCalcTarget_.push(xFrameCommon); /***/
@@ -209,7 +270,7 @@ int main(int argc, char *argv[])
       }
       break;
     case TEnumStatePosition::STATE_BACK:
-      if (pxFramesBack_.size() < COUNT_FRAMES)
+      if (pxFramesBack_.size() < COUNT_FRAMES_TO_CALC)
         pxFramesToCalc_.push(xFrameCommon);
       while (pxFramesBack_.empty() == false)
       {
@@ -309,6 +370,10 @@ static void prvRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
     cout << " ! ! ! Not setup SPI ! ! ! " << endl;
   case TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET:
     cout << " ! ! ! PACKET SENDING ERROR ! ! ! " << endl;
+  case TEnumRiscBehavior::RISC_CANNOT_CALC_TRAGET:
+    cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;
+    cout << sError << endl;
+    for(;;){}
   default:
     cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
     break;
@@ -536,13 +601,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
   float fCoefRotation(0.f), fCoefTranslation(0.f); // Coefficients of rotation and translation
   int16_t ssCoefShift(0);  
   static float fYawForward_(0.f), fX_Forward_(0.f), fZ_Forward_(0.f); // Calculated values iat the point closest to the marker
-  static vector<float> xAvgPeriodYaw_(0);                             // Vector of yaw moving average for one period, is calculated at the far point
-  static vector<float> xAvgPeriodX_(0);                               // Vector of X moving average for one period, is calculated at the far point
-  static vector<float> xAvgPeriodZ_(0);                               // Vector of Z moving average for one period, is calculated at the far point
   static float fPeriod_(0.f), fAmplitude_(0.f);
-  static float fTargetYaw_(0.f), fTargetX_(0.f);
-  static float fTargetZ_(TARGET_DISTANCE_VALUE_METER);
-
   /***/ static size_t nTemp(0), nTemp1(0);
 
   switch (eStatePosition_)
@@ -679,7 +738,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
 #ifdef TARGET_IS_CURRENT_POSITION
       if (nMeasurement == COUNT_MEASUREMENT_FOR_MOVING_AVG)
       {
-        prvCalculateTarget(pxFramesToCalcTarget_, OUT fMovingAvgYaw, OUT fMovingAvgX, OUT fMovingAvgZ,
+        /*prvCalculateTarget(pxFramesToCalcTarget_, OUT fMovingAvgYaw, OUT fMovingAvgX, OUT fMovingAvgZ,
                            xMarkerPoints, xCameraMatrix, xDistCoefficients);
         fTargetYaw_ = fMovingAvgYaw;
         fTargetX_ = fMovingAvgX;
@@ -693,7 +752,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
           xAvgPeriodX_.push_back(fMovingAvgX);
         while (xAvgPeriodZ_.size() < COUNT_MEASUREMENT_FOR_MOVING_AVG)
           xAvgPeriodZ_.push_back(fMovingAvgZ);
-        nMeasurement++;
+        nMeasurement++;*/
       }
 #endif
       if ((fabsf(fMovingAvgYaw) > FLOAT_EPSILON) && (fabsf(fMovingAvgX) > FLOAT_EPSILON) &&
@@ -714,9 +773,12 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
         xAvgPeriodZ_.erase(xAvgPeriodZ_.begin());
     }
 
-    /***/ float temp = 0.f;
-    int16_t temp1 = 0.f;
-    prvSendPacketToStroller(/*temp, temp, temp1,*/ fCoefRotation, fCoefTranslation, ssCoefShift, fPeriod_, fAmplitude_);
+    /***/ float temp(0.f), temp1(0.f);    
+    for (size_t i = 0; i < 3; i++)
+    {
+      prvSendPacketToStroller(/*temp, temp, temp1,*/ fCoefRotation, fCoefTranslation, ssCoefShift, fPeriod_, fAmplitude_);
+      this_thread::sleep_for(5ms);
+    }
 
     // In case there was a Reset packet
     if (nMeasurement < COUNT_MEASUREMENT_FOR_MOVING_AVG)
