@@ -14,29 +14,32 @@
  * ***Communication algorithm***
  * GPIO.0 - closest point, GPIO.1 - far point
  * Orientation unit                           Wheel control unit
+ *                              <------------ GPIO.0 = GPIO.1 = LOW
  *                              <------------ GPIO.0 = GPIO.1 = HIGH
  * TProtocolPullUpToMarker      ------------>
  * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
- *                             marker movement
+ *                                    marker movement
  *                              <------------ GPIO.0 = HIGH ; GPIO.1 = LOW
  *                              <------------ GPIO.0 = GPIO.1 = HIGH
  * TProtocoInWcuPullUpToMarker  ------------>
  * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
- *                             marker movement
+ *                                    marker movement
  *                              <------------ GPIO.0 = HIGH ; GPIO.1 = LOW
  *                              <------------ GPIO.0 = GPIO.1 = HIGH
- *                            target calculation
+ *                    target calculation
  * TProtocolInWcuStart          ------------>
  * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
- *                            far point movement
+ *                                    far point movement
  *                              <------------ GPIO.0 = LOW ; GPIO.1 = HIGH
+ *                        frame capture
  *                              <------------ GPIO.0 = GPIO.1 = LOW
  * TProtocolInWcuMotionCmd      <===========> TProtocolInOuCondition
  * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
- *                            closest point movement
+ *                                     closest point movement
  *                              <------------ GPIO.0 = HIGH ; GPIO.1 = LOW
+ *                        frame capture
  *                              <------------ GPIO.0 = GPIO.1 = LOW
- *                            far point movement
+ *                                     far point movement
  *                              <------------ GPIO.0 = LOW ; GPIO.1 = HIGH
  *                              <------------ GPIO.0 = GPIO.1 = LOW
  * TProtocolInWcuMotionCmd      <===========> TProtocolInOuCondition
@@ -64,6 +67,13 @@
 #endif
 
 
+/// Максимальный размер валидного пакета
+#define MAX_SIZE_ARUCO_PACKET \
+  ((sizeof(TProtocolInWcuMotionCmd) > sizeof(TProtocolPullUpToMarker)) ? \
+      ((sizeof(TProtocolInWcuMotionCmd) > sizeof(TProtocolInWcuReceiptRequest)) ? \
+          sizeof(TProtocolInWcuMotionCmd) : sizeof(TProtocolInWcuReceiptRequest)) : \
+      ((sizeof(TProtocolPullUpToMarker) > sizeof(TProtocolInWcuReceiptRequest)) ? \
+          sizeof(TProtocolPullUpToMarker) : sizeof(TProtocolInWcuReceiptRequest)))
 /** @name
  * ### Preambules and packets ID
  * @{
@@ -75,6 +85,7 @@
 #define ID_PACKET_IN_WCU_PULL_UP_TO_MARKER (0x02)
 #define ID_PACKET_IN_WCU_RECEIPT_REQUEST (0x03)
 #define ID_PACKET_IN_OU_CONFIRMATION (0x13)
+#define ID_PACKET_IN_WCU_READY_TO_START (0x04)
 /// On reset the stroller assign s a field value "ucIdPacket" equal to this constant three packets in a row
 #define ID_PACKET_IN_OU_RESET_WAS (0x03)
 /// @}
@@ -128,7 +139,7 @@ typedef struct
 #pragma pack(pop)
 
 
-/// Package receipt request from
+/// Packet receipt request from
 #pragma pack(push,1)
 typedef struct
 {
@@ -140,7 +151,7 @@ typedef struct
 #pragma pack(pop)
 
 
-// Package receipt request from
+/// Packet receipt request from
 #pragma pack(push,1)
 typedef struct
 {
@@ -151,6 +162,17 @@ typedef struct
   uint8_t ucResultCode;
   uint16_t crc16; ///< @ref crc16.c
 }TProtocolInOuConfirmation;
+#pragma pack(pop)
+
+
+/// OU ready packet
+#pragma pack(push,1)
+typedef struct
+{
+  uint16_t usPreambule; ///< @ref PREAMBULE_IN_WCU
+  uint8_t ucIdPacket; ///< 0x13, @ref ID_PACKET_IN_WCU_READY_TO_START
+  uint16_t crc16; ///< @ref crc16.c
+}TProtocolInWcuReadyToStart;
 #pragma pack(pop)
 
 

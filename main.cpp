@@ -23,7 +23,7 @@
 #include <wiringPiSPI.h>
 
 #include "crc.h"
-#include "protocol.h"
+#include "ProtocolAruco.h"
 
 // 3 - All_save_in_file
 #define DEBUG_SOFT (5)
@@ -124,20 +124,22 @@ bool prvCalculateTarget(queue<Mat> &pxFramesToCalc, OUT float &fYaw, OUT float &
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 int main(int argc, char *argv[])
 {
+  Mat xFrameCommon, xFrameTemp;                                                                              // Captured frames
+  float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
+  size_t nFrameToTarget(0);
+  static float fMovingAvgYaw_(IMPOSSIBLE_YAW_X_Z_VALUE), fMovingAvgX_(IMPOSSIBLE_YAW_X_Z_VALUE);             ///< Moving average value
+  static float fMovingAvgZ_(IMPOSSIBLE_YAW_X_Z_VALUE);
+  static float fTargetYaw_(IMPOSSIBLE_YAW_X_Z_VALUE);
+  static queue<Mat> pxFramesForward_;
+  static queue<Mat> pxFramesBack_;
+  static queue<Mat> pxFramesToCalc_;                                         ///< Captured frames at the points of trajectory extremum
+  static TEnumStatePosition eStatePosition_(TEnumStatePosition::STATE_NONE); ///< Wheelchair position: at the nearest or farthest point from the marker, or between them
+  static bool isFirstRun_ = true;
+
   prvInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
 
   for (;;)
   {
-    Mat xFrameCommon, xFrameTemp;                                                                              // Captured frames
-    float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
-    static float fMovingAvgYaw_(IMPOSSIBLE_YAW_X_Z_VALUE), fMovingAvgX_(IMPOSSIBLE_YAW_X_Z_VALUE);             ///< Moving average value
-    static float fMovingAvgZ_(IMPOSSIBLE_YAW_X_Z_VALUE);
-    static float fTargetYaw_(IMPOSSIBLE_YAW_X_Z_VALUE);
-    static queue<Mat> pxFramesForward_;
-    static queue<Mat> pxFramesBack_;
-    static queue<Mat> pxFramesToCalc_;                                         ///< Captured frames at the points of trajectory extremum
-    static TEnumStatePosition eStatePosition_(TEnumStatePosition::STATE_NONE); ///< Wheelchair position: at the nearest or farthest point from the marker, or between them
-
     while (pxFramesForward_.empty() == false)
       pxFramesForward_.pop();
     while (pxFramesBack_.empty() == false)
@@ -155,6 +157,11 @@ int main(int argc, char *argv[])
     // Pause to allow the levels on the pins to be set
     this_thread::sleep_for(2ms);
 
+    if (isFirstRun_ == true)
+    {
+      isFirstRun_ = false;
+      while
+    }
     // Closes point to the marker
     while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
            (pxFramesForward_.size() < COUNT_FRAMES))
