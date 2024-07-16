@@ -178,6 +178,9 @@ int main(int argc, char *argv[])
         prvSendPacketToStroller(fTemp, fTemp1, ssTemp, fTemp2, fTemp3);
         this_thread::sleep_for(5ms);
       }
+#ifndef TARGET_IS_CURRENT_POSITION
+      fTargetYaw_ = fTargetX_ = 0.f;
+#endif
 
       continue;
     }
