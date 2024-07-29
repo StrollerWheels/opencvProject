@@ -128,13 +128,8 @@ int main(int argc, char *argv[])
     //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     // Target caluclation
     if (isFirstRunAfterReset_ == true)
-    {
-      aruco::Dictionary dictionary = aruco::getPredefinedDictionary(/*aruco::DICT_ARUCO_MIP_36h12*/ cv::aruco::DICT_5X5_50); /***/
-      aruco::DetectorParameters xDetectorParams;
-      static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
-      Mat xFrameTemp1 = xFrameCommon;
-      vector<int> xIdDetectMarker;                             // Vector of identifiers of the detected markers
-      vector<vector<Point2f>> xCornersMarker, xRejectedMarker; // Vector of detected marker corners
+    {      
+      double yaw(0.f), x(0.f), distance(0.f);
 
       isResetWas_ = true;
       isFirstRunAfterReset_ = false;
@@ -146,43 +141,15 @@ int main(int argc, char *argv[])
           vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
         else
         {
-          try
+          if (bTelemetryCalculation(xFrameCommon, OUT yaw, OUT x, OUT distance) == true)
           {
-            xDetector_.detectMarkers(xFrameTemp1, xCornersMarker, xIdDetectMarker, xRejectedMarker); /// @warning Was exception!!!
-          }
-          catch (...)
-          {
-            cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
-          }
-          /*terminate called after throwing an instance of 'cv::Exception'
-          what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
-          auto nMarkers = xCornersMarker.size();
-          vector<Vec3d> rvecs(nMarkers), tvecs(nMarkers);
-
-          if (xIdDetectMarker.empty() == false)
-            solvePnP(xMarkerPoints, xCornersMarker.at(0), xCameraMatrix, xDistCoefficients, rvecs.at(0), tvecs.at(0), false);
-          else
+            xYawsToCalcTarget_.push_back(yaw);
+            xX_ToCalcTarget_.push_back(x);
+            xDistanceToCalcTarget_.push_back(distance);
+          } else {
             continue;
-
-          // Quaternion calculation
-          double r[] = {rvecs.at(0)[0], rvecs.at(0)[1], rvecs.at(0)[2]};
-          double t[] = {tvecs.at(0)[0], tvecs.at(0)[1], tvecs.at(0)[2]};
-          double lenVecRotation = sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
-          r[0] = r[0] / lenVecRotation;
-          r[1] = r[1] / lenVecRotation;
-          r[2] = r[2] / lenVecRotation;
-          double angle = lenVecRotation / 2.f;
-          double quat[] = {cos(angle), sin(angle) * r[0], sin(angle) * r[1], sin(angle) * r[2]};
-          double yaw, roll, pitch;
-          // Euler angles calculation
-          vGetYawRollPitch(quat[0], quat[1], quat[2], quat[3], OUT yaw, OUT roll, OUT pitch);
-
-          xYawsToCalcTarget_.push_back(yaw);
-          xX_ToCalcTarget_.push_back(t[0]);
-          xDistanceToCalcTarget_.push_back(sqrt(pow(t[0], 2.f) + pow(t[2], 2.f)));
-          /***/ tempYaw[tempNo++] = yaw;
-          tempYawQueue.push(yaw);
-        }
+          }
+        }       
       }
 
       if ((xYawsToCalcTarget_.size() < COUNT_FRAMES_TO_CALC_TARGET) ||

@@ -44,6 +44,8 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, std::string sError);
 
 bool bCaptureFrame(cv::VideoCapture &xCapture, OUT cv::Mat &frame, size_t nAttempts);
 
+bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT double &distance);
+
 void vGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &yaw, OUT double &roll, OUT double &pitch);
 
 void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ, std::ofstream &xFileToSave,

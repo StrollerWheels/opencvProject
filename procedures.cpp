@@ -1,10 +1,10 @@
 /**
  ******************************************************************************
  * @file           : procedures.cpp
- * @brief          **Related function** 
+ * @brief          **Related function**
  * @details Related functions that do not affect the program logic
  ******************************************************************************
- * @attention 
+ * @attention
  ******************************************************************************
   @authors [Novikov Andrey](https://t.me/AndreyNikolaevichPerm)
   @version 1.0
@@ -23,20 +23,19 @@
 #include "procedures.h"
 #include "settings.h"
 
-
 using namespace std;
 using namespace cv;
 
+extern cv::Mat xMarkerPoints;
+extern Mat xCameraMatrix, xDistCoefficients; ///< Camera calibration settings
 
 static bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients);
- 
- 
 
 /**
- * @brief Initialization function 
+ * @brief Initialization function
  */
 void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients,
-                                    OUT cv::VideoCapture &xCaptureFrame, OUT cv::Mat &xMarkerPoints)
+                           OUT cv::VideoCapture &xCaptureFrame, OUT cv::Mat &xMarkerPoints)
 {
   wiringPiSetup();
   pinMode(NO_PIN_FORWARD, INPUT);
@@ -77,9 +76,8 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   xMarkerPoints.ptr<Vec3f>(0)[3] = Vec3f(-MARKER_LENGTH / 2.f, -MARKER_LENGTH / 2.f, 0);
 }
 
-
 /**
- * @brief Risc management function 
+ * @brief Risc management function
  */
 void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
 {
@@ -100,7 +98,9 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
   case TEnumRiscBehavior::RISC_CANNOT_CALC_TRAGET:
     cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;
     cout << sError << endl;
-    for(;;){}
+    for (;;)
+    {
+    }
   default:
     cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
     break;
@@ -112,9 +112,7 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
     asm("NOP");
 }
 
-
-
-/** 
+/**
  * @brief Frame capture
  */
 bool bCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts)
@@ -145,6 +143,76 @@ bool bCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts)
   return ret;
 }
 
+/**
+ * @brief
+ *
+ * @param[in] xFrame
+ * @param[out] yaw
+ * @param[out] x
+ * @param[out] distance
+ * @return true
+ * @return false
+ */
+bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT double &distance)
+{
+  aruco::Dictionary dictionary = aruco::getPredefinedDictionary(/*aruco::DICT_ARUCO_MIP_36h12*/ cv::aruco::DICT_5X5_50); /***/
+  aruco::DetectorParameters xDetectorParams;
+  static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
+  vector<int> xIdDetectMarker;                                         // Vector of identifiers of the detected markers
+  vector<vector<Point2f>> xCornersMarker, xRejectedMarker;             // Vector of detected marker corners
+  bool ret(true);
+  double r[3];
+  double t[3];
+  double lenVecRotation;
+  double angle;
+  double quat[4];
+  double roll, pitch;
+
+  try
+  {
+    xDetector_.detectMarkers(xFrame, xCornersMarker, xIdDetectMarker, xRejectedMarker); /// @warning Was exception!!!
+  }
+  catch (...)
+  {
+    cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+  }
+  /*terminate called after throwing an instance of 'cv::Exception'
+  what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
+  auto nMarkers = xCornersMarker.size();
+  vector<Vec3d> rvecs(nMarkers), tvecs(nMarkers);
+
+  if (xIdDetectMarker.empty() == false)
+    solvePnP(xMarkerPoints, xCornersMarker.at(0), xCameraMatrix, xDistCoefficients, rvecs.at(0), tvecs.at(0), false);
+  else
+  {
+    ret = false;
+    goto return_bTelemetryCalculation;
+  }
+
+  // Quaternion calculation
+  r[0] = rvecs.at(0)[0];
+  r[1] = rvecs.at(0)[1];
+  r[2] = rvecs.at(0)[2];
+  t[0] = tvecs.at(0)[0];
+  t[1] = tvecs.at(0)[1];
+  t[2] = tvecs.at(0)[2];
+  lenVecRotation = sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+  r[0] = r[0] / lenVecRotation;
+  r[1] = r[1] / lenVecRotation;
+  r[2] = r[2] / lenVecRotation;
+  angle = lenVecRotation / 2.f;
+  quat[0] = cos(angle);
+  quat[1] = sin(angle) * r[0];
+  quat[2] = sin(angle) * r[1];
+  quat[3] = sin(angle) * r[2];
+  // Euler angles calculation
+  vGetYawRollPitch(quat[0], quat[1], quat[2], quat[3], OUT yaw, OUT roll, OUT pitch);
+  x = t[0];
+  distance = sqrt(pow(t[0], 2) + pow(t[2], 2));
+
+return_bTelemetryCalculation:
+  return ret;
+}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -173,17 +241,15 @@ void vGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &ya
   }
 }
 
-
-/** 
+/**
  * @brief Output debugging information and save it to a file
  */
 void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ, ofstream &xFileToSave,
-                      float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift, float fTargetYaw, float fTargetX)
+                    float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift, float fTargetYaw, float fTargetX)
 {
   float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
 
-  cout << "Target yaw = " << fTargetYaw << " ( " << (fTargetYaw * DEGRES_IN_RAD) << " degres)"  << 
-                " ;  target X = " << fTargetX << " ( " << (fTargetX * 100.f) << " cm);" << endl;
+  cout << "Target yaw = " << fTargetYaw << " ( " << (fTargetYaw * DEGRES_IN_RAD) << " degres)" << " ;  target X = " << fTargetX << " ( " << (fTargetX * 100.f) << " cm);" << endl;
   cout << "Moving Yaw = " << fMovingAvgYaw << " ( " << (fMovingAvgYaw * DEGRES_IN_RAD) << " degres);" << endl;
   cout << "Moving X = " << fMovingAvgX << " ( " << (fMovingAvgX * 100.f) << " cm);" << endl;
   cout << "Moving distance = " << fDistance << " ( " << (fDistance * 100.f) << " cm);" << endl;
@@ -196,13 +262,12 @@ void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ
 #endif
 }
 
-
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**
-* @brief Read camera parameters
-*/
+ * @brief Read camera parameters
+ */
 bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients)
 {
   cv::FileStorage fs(filename, cv::FileStorage::READ);
