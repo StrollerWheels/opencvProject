@@ -56,7 +56,7 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   {
     xCaptureFrame.open(CAMERA_NUMBER, cv::CAP_V4L2);
     if (xCaptureFrame.isOpened() == false)
-      cout << "Cannot open camera" << endl;
+      std::cout << "Cannot open camera" << endl;
     this_thread::sleep_for(1000ms);
   } while (xCaptureFrame.isOpened() == false);
 
@@ -67,7 +67,7 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   double dWidth = xCaptureFrame.get(cv::CAP_PROP_FRAME_WIDTH);   // get the width of frames of the video
   double dHeight = xCaptureFrame.get(cv::CAP_PROP_FRAME_HEIGHT); // get the height of frames of the video
   double dFps = xCaptureFrame.get(cv::CAP_PROP_FPS);
-  cout << "camera width = " << dWidth << ", height = " << dHeight << ", FPS = " << dFps << endl;
+  std::cout << "camera width = " << dWidth << ", height = " << dHeight << ", FPS = " << dFps << endl;
 
   // Set coordinate system
   xMarkerPoints.ptr<Vec3f>(0)[0] = Vec3f(-MARKER_LENGTH / 2.f, MARKER_LENGTH / 2.f, 0);
@@ -84,29 +84,29 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
   switch (eErrorCode)
   {
   case TEnumRiscBehavior::RISC_WRONG_INPUT_COMBINATION:
-    cout << " ! ! ! Wrong input combination ! ! ! " << endl;
+    std::cout << " ! ! ! Wrong input combination ! ! ! " << endl;
     break;
   case TEnumRiscBehavior::RISC_CAMERA_PROBLEM:
-    cout << " ! ! ! Camera problems ! ! ! " << endl;
+    std::cout << " ! ! ! Camera problems ! ! ! " << endl;
     break;
   case TEnumRiscBehavior::RISC_INVALID_CAMERA_FILE:
-    cout << " ! ! ! Invalid camera file ! ! ! " << endl;
+    std::cout << " ! ! ! Invalid camera file ! ! ! " << endl;
   case TEnumRiscBehavior::RISC_NOT_SETUP_SPI:
-    cout << " ! ! ! Not setup SPI ! ! ! " << endl;
+    std::cout << " ! ! ! Not setup SPI ! ! ! " << endl;
   case TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET:
-    cout << " ! ! ! PACKET SENDING ERROR ! ! ! " << endl;
+    std::cout << " ! ! ! PACKET SENDING ERROR ! ! ! " << endl;
   case TEnumRiscBehavior::RISC_CANNOT_CALC_TRAGET:
-    cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;
-    cout << sError << endl;
+    std::cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;
+    std::cout << sError << endl;
     for (;;)
     {
     }
   default:
-    cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
+    std::cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
     break;
   }
 
-  cout << sError << endl;
+  std::cout << sError << endl;
 
   for (;;)
     asm("NOP");
@@ -129,11 +129,11 @@ bool bCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts)
       xCapture.open(CAMERA_NUMBER, cv::CAP_V4L2);
       if (xCapture.isOpened() == false)
       {
-        cout << "Cannot open camera" << endl;
+        std::cout << "Cannot open camera" << endl;
         continue;
       }
 
-      cout << "Cannot read a xFrameCommon" << endl;
+      std::cout << "Cannot read a xFrameCommon" << endl;
     } while ((xCapture.read(frame) == false) && (--nAttempts > 0));
   }
 
@@ -153,7 +153,7 @@ bool bCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts)
  * @return true
  * @return false
  */
-bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT double &distance)
+bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT double &z)
 {
   aruco::Dictionary dictionary = aruco::getPredefinedDictionary(/*aruco::DICT_ARUCO_MIP_36h12*/ cv::aruco::DICT_5X5_50); /***/
   aruco::DetectorParameters xDetectorParams;
@@ -174,7 +174,7 @@ bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT 
   }
   catch (...)
   {
-    cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+    std::cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
   }
   /*terminate called after throwing an instance of 'cv::Exception'
   what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
@@ -208,7 +208,7 @@ bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT 
   // Euler angles calculation
   vGetYawRollPitch(quat[0], quat[1], quat[2], quat[3], OUT yaw, OUT roll, OUT pitch);
   x = t[0];
-  distance = sqrt(pow(t[0], 2) + pow(t[2], 2));
+  z = t[2];  
 
 return_bTelemetryCalculation:
   return ret;
@@ -249,12 +249,12 @@ void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ
 {
   float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
 
-  cout << "Target yaw = " << fTargetYaw << " ( " << (fTargetYaw * DEGRES_IN_RAD) << " degres)" << " ;  target X = " << fTargetX << " ( " << (fTargetX * 100.f) << " cm);" << endl;
-  cout << "Moving Yaw = " << fMovingAvgYaw << " ( " << (fMovingAvgYaw * DEGRES_IN_RAD) << " degres);" << endl;
-  cout << "Moving X = " << fMovingAvgX << " ( " << (fMovingAvgX * 100.f) << " cm);" << endl;
-  cout << "Moving distance = " << fDistance << " ( " << (fDistance * 100.f) << " cm);" << endl;
-  cout << "Coef rotation = " << fCoefRot << " ; Coef translation = " << fCoefTransl << " ; Coef shift = " << ssCoefShift << endl;
-  cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
+  std::cout << "Target yaw = " << fTargetYaw << " ( " << (fTargetYaw * DEGRES_IN_RAD) << " degres)" << " ;  target X = " << fTargetX << " ( " << (fTargetX * 100.f) << " cm);" << endl;
+  std::cout << "Moving Yaw = " << fMovingAvgYaw << " ( " << (fMovingAvgYaw * DEGRES_IN_RAD) << " degres);" << endl;
+  std::cout << "Moving X = " << fMovingAvgX << " ( " << (fMovingAvgX * 100.f) << " cm);" << endl;
+  std::cout << "Moving distance = " << fDistance << " ( " << (fDistance * 100.f) << " cm);" << endl;
+  std::cout << "Coef rotation = " << fCoefRot << " ; Coef translation = " << fCoefTransl << " ; Coef shift = " << ssCoefShift << endl;
+  std::cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
 
 //  Saving the position to a file
 #if DEBUG_SOFT < 3

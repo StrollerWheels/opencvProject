@@ -37,6 +37,17 @@ enum class TEnumRiscBehavior
 };
 
 
+typedef struct
+{
+  float fYaw;
+  float fX;
+  float fZ;
+  float fDistance;
+}TTargetValues;
+
+
+
+
 void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients,
                                     OUT cv::VideoCapture &xCaptureFrame, OUT cv::Mat &xMarkerPoints);
 
@@ -44,7 +55,7 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, std::string sError);
 
 bool bCaptureFrame(cv::VideoCapture &xCapture, OUT cv::Mat &frame, size_t nAttempts);
 
-bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT double &distance);
+bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT double &z);
 
 void vGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &yaw, OUT double &roll, OUT double &pitch);
 

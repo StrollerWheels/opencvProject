@@ -54,14 +54,13 @@ float fCoefTranslationDebug(0.f), fCoefRotationDebug(0.f); ///< To display in th
 int16_t ssCoefShiftDebug(0.f);
 #endif
 
-static vector<float> xAvgPeriodYaw_(0);                                                        // Vector of yaw moving average for one period, is calculated at the far point
-static vector<float> xAvgPeriodX_(0);                                                          // Vector of X moving average for one period, is calculated at the far point
-static vector<float> xAvgPeriodZ_(0);                                                          // Vector of Z moving average for one period, is calculated at the far point
-static float fMovingAvgYaw_(IMPOSSIBLE_YAW_X_Z_VALUE), fMovingAvgX_(IMPOSSIBLE_YAW_X_Z_VALUE); ///< Moving average value
-static float fMovingAvgZ_(IMPOSSIBLE_YAW_X_Z_VALUE);
-static float fTargetYaw_(IMPOSSIBLE_YAW_X_Z_VALUE);
-static float fTargetX_(IMPOSSIBLE_YAW_X_Z_VALUE);
-static float fTargetDistance_(IMPOSSIBLE_YAW_X_Z_VALUE);
+static vector<float> xAvgPeriodYaw_(0); // Vector of yaw moving average for one period, is calculated at the far point
+static vector<float> xAvgPeriodX_(0);
+static vector<float> xCorrelatedAvgPeriodX_(0);                                                        // Vector of X moving average for one period, is calculated at the far point
+static vector<float> xAvgPeriodZ_(0);                                                                  // Vector of Z moving average for one period, is calculated at the far point
+static float fMovingAvgYaw_(IMPOSSIBLE_YAW_X_Z_VALUE), fMovingAvgX_(IMPOSSIBLE_YAW_X_Z_VALUE);         ///< Moving average value
+static float fMovingCorrelatedAvgX_(IMPOSSIBLE_YAW_X_Z_VALUE), fMovingAvgZ_(IMPOSSIBLE_YAW_X_Z_VALUE); ///<
+static TTargetValues xTarget_;
 static queue<Mat> pxFramesForward_;
 static queue<Mat> pxFramesBack_;
 static queue<Mat> pxFramesToCalc_;                                         ///< Captured frames at the points of trajectory extremum
@@ -70,30 +69,29 @@ static bool isFirstRunAfterReset_(true);
 static bool isResetWas_(false);
 static std::vector<double> xYawsToCalcTarget_;
 static std::vector<double> xX_ToCalcTarget_;
+static std::vector<double> xZ_ToCalcTarget_;
 static std::vector<double> xDistanceToCalcTarget_;
 
 static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints,
-                                         Mat &xCameraMatrix, Mat &xDistCoefficients, OUT float &fAvgYaw, OUT float &fAvgX,
-                                         OUT float &fAvgZ, float &fTargetYaw, float &fMovingYaw, float fMovingX, float fMovingZ);
-static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float &fAvgYaw, float &fAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
-                                      OUT float &fMovingAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon);
-static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDistance, float &fTargetYaw, float &fTargetX,
+                                         Mat &xCameraMatrix, Mat &xDistCoefficients, OUT float &fAvgYaw, OUT float &fAvgX, OUT float &fCorrelatedAvgX,
+                                         OUT float &fAvgZ, float &fTargetYaw, float &fMovingYaw, float fMovingX, float fMovingCorrelatedX, float fMovingZ);
+static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float &fAvgYaw, float &fAvgX, float &fCorrelatedAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
+                                      OUT float &fMovingCorrelatedAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon);
+static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDistance, float &fTargetYaw, float &fTargetX, float &fTargetZ,
                                               float &fTargetDistance, OUT float &fCoefRotation, OUT float &fCoefTranslation,
                                               OUT int16_t &ssCoefShift, float &fPeriod, float &fAmplitude);
 static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude);
-static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_ToCalc, vector<double> &xDistanceToCalc,
+static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xCorrelatedX_ToCalc, vector<double> &xZ_ToCalc,
                                OUT float &fYaw, OUT float &fX, OUT float &fZ);
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/***/ double tempYaw[COUNT_FRAMES_TO_CALC_TARGET];
-/***/ queue<double> tempYawQueue;
-/***/ size_t tempNo(0);
 int main(int argc, char *argv[])
 {
-  Mat xFrameCommon, xFrameTemp;                                                                              // Captured frames
-  float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
+  Mat xFrameCommon, xFrameTemp; // Captured frames
+  float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE);
+  float fCorrelatedAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
 
   vInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
 
@@ -105,31 +103,40 @@ int main(int argc, char *argv[])
       vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
   }
 
-  // Main infinite loop
+  // * * * Main infinite loop * * *
   for (;;)
   {
-    while (pxFramesForward_.empty() == false)
-      pxFramesForward_.pop();
-    while (pxFramesBack_.empty() == false)
-      pxFramesBack_.pop();
-    while (pxFramesToCalc_.empty() == false)
-      pxFramesToCalc_.pop();
-
-    while (((digitalRead(NO_PIN_FORWARD) == LOW) && (digitalRead(NO_PIN_BACK) == LOW)) ||
-           ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == HIGH)))
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+    // * * * START OF WAITING FOR SIGNAL AT THE EXTREMES * * *
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     {
-      if (bCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
-        vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
+      while (pxFramesForward_.empty() == false)
+        pxFramesForward_.pop();
+      while (pxFramesBack_.empty() == false)
+        pxFramesBack_.pop();
+      while (pxFramesToCalc_.empty() == false)
+        pxFramesToCalc_.pop();
+
+      while (((digitalRead(NO_PIN_FORWARD) == LOW) && (digitalRead(NO_PIN_BACK) == LOW)) ||
+             ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == HIGH)))
+      {
+        if (bCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
+          vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
+      }
     }
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+    // * * * END OF WAITING FOR SIGNAL AT THE EXTREMES * * *
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
     // Pause to allow the levels on the pins to be set
     this_thread::sleep_for(2ms);
 
     //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-    // Target caluclation
+    // * * * START OF TARGET CALCULATION * * *
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     if (isFirstRunAfterReset_ == true)
-    {      
-      double yaw(0.f), x(0.f), distance(0.f);
+    {
+      double yaw(0.f), x(0.f), z(0.f), distance(0.f);
 
       isResetWas_ = true;
       isFirstRunAfterReset_ = false;
@@ -141,25 +148,30 @@ int main(int argc, char *argv[])
           vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
         else
         {
-          if (bTelemetryCalculation(xFrameCommon, OUT yaw, OUT x, OUT distance) == true)
+          if (bTelemetryCalculation(xFrameCommon, OUT yaw, OUT x, OUT z) == true)
           {
             xYawsToCalcTarget_.push_back(yaw);
             xX_ToCalcTarget_.push_back(x);
-            xDistanceToCalcTarget_.push_back(distance);
-          } else {
+            xZ_ToCalcTarget_.push_back(z);
+          }
+          else
+          {
             continue;
           }
-        }       
+        }
       }
 
-      if ((xYawsToCalcTarget_.size() < COUNT_FRAMES_TO_CALC_TARGET) ||
-          (prvCalculateTarget(xYawsToCalcTarget_, xX_ToCalcTarget_, xDistanceToCalcTarget_, OUT fMovingAvgYaw_, OUT fMovingAvgX_, OUT fMovingAvgZ_) == false))
+      if (xYawsToCalcTarget_.size() < COUNT_FRAMES_TO_CALC_TARGET)
+        vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_CALC_TRAGET, "Unable to calculation the targets");
+      if (prvCalculateTarget(xYawsToCalcTarget_, xX_ToCalcTarget_, xZ_ToCalcTarget_, OUT fMovingAvgYaw_,
+                             OUT fMovingAvgX_, OUT fMovingAvgZ_) == false)
         vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_CALC_TRAGET, "Unable to calculation the targets");
 
       // Targets initialization
-      fTargetYaw_ = fMovingAvgYaw_;
-      fTargetX_ = fMovingAvgX_;
-      fTargetDistance_ = TARGET_DISTANCE_VALUE_METER;
+      xTarget_.fYaw = fMovingAvgYaw_;
+      xTarget_.fX = fMovingAvgX_;
+      xTarget_.fZ = fMovingAvgZ_;
+      xTarget_.fDistance = TARGET_DISTANCE_VALUE_METER;
 
       // Memorization of telemetry vectors
       xAvgPeriodYaw_.clear();
@@ -173,7 +185,7 @@ int main(int argc, char *argv[])
         xAvgPeriodZ_.push_back(fMovingAvgZ_);
 
       // Sending three identical pacckets because there are often transmission errors
-      float fTemp(0.f), fTemp1(0.f),fTemp2(0.f), fTemp3(0.f);
+      float fTemp(0.f), fTemp1(0.f), fTemp2(0.f), fTemp3(0.f);
       int16_t ssTemp(0);
       for (size_t i = 0; i < 3; i++)
       {
@@ -182,95 +194,106 @@ int main(int argc, char *argv[])
         this_thread::sleep_for(5ms);
       }
 
-      // Memorization of forward values 
-      TEnumStatePosition eStateTemp(TEnumStatePosition::STATE_FORWARD);      
+      // Memorization of forward values
+      TEnumStatePosition eStateTemp(TEnumStatePosition::STATE_FORWARD);
       Mat xFrameTemp;
       // At the closest point we only memorize the arithmetic mean value
-      prvMovingAvgAndSendPacket(eStateTemp, fMovingAvgYaw_, fMovingAvgX_, fMovingAvgZ_,
+      prvMovingAvgAndSendPacket(eStateTemp, fMovingAvgYaw_, fMovingAvgX_, fMovingCorrelatedAvgX_, fMovingAvgZ_,
                                 OUT fTemp3, OUT fTemp3, OUT fTemp3, xCaptureFrame, OUT xFrameTemp);
-      
+
 #ifndef TARGET_IS_CURRENT_POSITION
-      fTargetYaw_ = fTargetX_ = 0.f;
+      xTarget_.fYaw = xTarget_.fX = 0.f;
 #endif
 
       continue;
     }
     //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+    // * * * END OF TARGET CALCULATION * * *
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
-    // Closes point to the marker
-    while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
-           (pxFramesForward_.size() < COUNT_FRAMES_TO_CALC))
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+    // * * * START OF FRAMES COLLECTION AT THE EXTREMES * * *
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     {
-      if (bCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
-        vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
-      pxFramesForward_.push(xFrameTemp);
-      cout << "Capture closes was" << endl;
-    }
-
-    // Farthest point from the marker
-    while ((digitalRead(NO_PIN_BACK) == HIGH) && (digitalRead(NO_PIN_FORWARD) == LOW) &&
-           (pxFramesBack_.size() < COUNT_FRAMES_TO_CALC))
-    {
-      if (bCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
-        vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
-      pxFramesBack_.push(xFrameTemp);
-      cout << "Capture farthest was" << endl;
-    }
-
-    // Point defenition
-    if ((pxFramesForward_.empty() == false) && (pxFramesBack_.empty() == true))
-      eStatePosition_ = TEnumStatePosition::STATE_FORWARD;
-
-    if ((pxFramesForward_.empty() == true) && (pxFramesBack_.empty() == false))
-      eStatePosition_ = TEnumStatePosition::STATE_BACK;
-
-    if (pxFramesForward_.empty() == pxFramesBack_.empty())
-      eStatePosition_ = TEnumStatePosition::STATE_NONE;
-
-    // Position calculation preparation
-    switch (eStatePosition_)
-    {
-    case TEnumStatePosition::STATE_FORWARD:
-      if (pxFramesForward_.size() < COUNT_FRAMES_TO_CALC)
-        pxFramesToCalc_.push(xFrameCommon);
-      while (pxFramesForward_.empty() == false)
+      // Closes point to the marker
+      while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
+             (pxFramesForward_.size() < COUNT_FRAMES_TO_CALC))
       {
-        pxFramesToCalc_.push(pxFramesForward_.front());
-        pxFramesForward_.pop();
+        if (bCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
+          vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
+        pxFramesForward_.push(xFrameTemp);
+        std::cout << "Capture closes was" << endl;
       }
-      break;
-    case TEnumStatePosition::STATE_BACK:
-      if (pxFramesBack_.size() < COUNT_FRAMES_TO_CALC)
-        pxFramesToCalc_.push(xFrameCommon);
-      while (pxFramesBack_.empty() == false)
-      {
-        pxFramesToCalc_.push(pxFramesBack_.front());
-        pxFramesBack_.pop();
-      }
-      break;
-    default:
-      continue;
-    }
 
-    cout << "Count of frames = " + std::to_string(pxFramesToCalc_.size()) << endl;
+      // Farthest point from the marker
+      while ((digitalRead(NO_PIN_BACK) == HIGH) && (digitalRead(NO_PIN_FORWARD) == LOW) &&
+             (pxFramesBack_.size() < COUNT_FRAMES_TO_CALC))
+      {
+        if (bCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
+          vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
+        pxFramesBack_.push(xFrameTemp);
+        std::cout << "Capture farthest was" << endl;
+      }
+
+      // Point defenition
+      if ((pxFramesForward_.empty() == false) && (pxFramesBack_.empty() == true))
+        eStatePosition_ = TEnumStatePosition::STATE_FORWARD;
+
+      if ((pxFramesForward_.empty() == true) && (pxFramesBack_.empty() == false))
+        eStatePosition_ = TEnumStatePosition::STATE_BACK;
+
+      if (pxFramesForward_.empty() == pxFramesBack_.empty())
+        eStatePosition_ = TEnumStatePosition::STATE_NONE;
+
+      // Position calculation preparation
+      switch (eStatePosition_)
+      {
+      case TEnumStatePosition::STATE_FORWARD:
+        if (pxFramesForward_.size() < COUNT_FRAMES_TO_CALC)
+          pxFramesToCalc_.push(xFrameCommon);
+        while (pxFramesForward_.empty() == false)
+        {
+          pxFramesToCalc_.push(pxFramesForward_.front());
+          pxFramesForward_.pop();
+        }
+        break;
+      case TEnumStatePosition::STATE_BACK:
+        if (pxFramesBack_.size() < COUNT_FRAMES_TO_CALC)
+          pxFramesToCalc_.push(xFrameCommon);
+        while (pxFramesBack_.empty() == false)
+        {
+          pxFramesToCalc_.push(pxFramesBack_.front());
+          pxFramesBack_.pop();
+        }
+        break;
+      default:
+        continue;
+      }
+    }
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+    // * * * END OF TELEMETRY COLLECTION AT THE EXTREMES * * *
+    //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+
+    std::cout << "Count of frames = " + std::to_string(pxFramesToCalc_.size()) << endl;
     if (eStatePosition_ == TEnumStatePosition::STATE_FORWARD)
-      cout << "= = = = = = =" << endl;
+      std::cout << "= = = = = = =" << endl;
 
     // Calculation of the arithmetic mean ratation angle (Yaw), X and Z of measurement at one far or closest point
-    if ((prvYawTranslationCalculation(eStatePosition_, pxFramesToCalc_, xMarkerPoints, xCameraMatrix, xDistCoefficients, OUT fAvgYaw,
-                                      OUT fAvgX, OUT fAvgZ, fTargetYaw_, fMovingAvgYaw_, fMovingAvgX_, fMovingAvgZ_) == false) &&
+    if ((prvYawTranslationCalculation(eStatePosition_, pxFramesToCalc_, xMarkerPoints, xCameraMatrix, xDistCoefficients, OUT fAvgYaw, OUT fAvgX, OUT fCorrelatedAvgX,
+                                      OUT fAvgZ, xTarget_.fYaw, fMovingAvgYaw_, fMovingAvgX_, fMovingCorrelatedAvgX_, fMovingAvgZ_) == false) &&
         (fMovingAvgYaw_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fMovingAvgX_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
         (fMovingAvgZ_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
       fAvgYaw = fMovingAvgYaw_;
       fAvgX = fMovingAvgX_;
+      fCorrelatedAvgX = fMovingCorrelatedAvgX_;
       fAvgZ = fMovingAvgZ_;
-      cout << "Failed measurement" << endl;
+      std::cout << "Failed measurement" << endl;
     }
 
     // Caluclation of moving average at the far point and sending a packet of trajectory correction coefficients to the WCU
     // At the closest point we only memorize the arithmetic mean value
-    prvMovingAvgAndSendPacket(eStatePosition_, fAvgYaw, fAvgX, fAvgZ, OUT fMovingAvgYaw_, OUT fMovingAvgX_,
+    prvMovingAvgAndSendPacket(eStatePosition_, fAvgYaw, fAvgX, fCorrelatedAvgX, fAvgZ, OUT fMovingAvgYaw_, OUT fMovingCorrelatedAvgX_,
                               OUT fMovingAvgZ_, xCaptureFrame, xFrameCommon);
   }
 
@@ -280,11 +303,27 @@ int main(int argc, char *argv[])
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/** @brief Calculation of the arithmetic mean ratation angle (Yaw), X and Z of measurement at one far or closest point
+/**
+ * @brief Calculation of the arithmetic mean ratation angle (Yaw), X and Z of measurement at one far or closest point
+ *
+ * @param eStatePosition_
+ * @param pxFramesToCalc
+ * @param xMarkerPoints
+ * @param xCameraMatrix
+ * @param xDistCoefficients
+ * @param fAvgYaw
+ * @param fAvgX
+ * @param fAvgZ
+ * @param fTargetYaw
+ * @param fMovingYaw
+ * @param fMovingX
+ * @param fMovingZ
+ * @return true
+ * @return false
  */
 static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, queue<Mat> &pxFramesToCalc, cv::Mat &xMarkerPoints,
-                                         Mat &xCameraMatrix, Mat &xDistCoefficients, OUT float &fAvgYaw, OUT float &fAvgX,
-                                         OUT float &fAvgZ, float &fTargetYaw, float &fMovingYaw, float fMovingX, float fMovingZ)
+                                         Mat &xCameraMatrix, Mat &xDistCoefficients, OUT float &fAvgYaw, OUT float &fAvgX, OUT float &fCorrelatedAvgX,
+                                         OUT float &fAvgZ, float &fTargetYaw, float &fMovingYaw, float fMovingX, float fMovingCorrelatedX, float fMovingZ)
 {
   bool ret = true;
   Mat xFrameTemp1;
@@ -295,11 +334,14 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
   aruco::Dictionary dictionary = aruco::getPredefinedDictionary(/*aruco::DICT_ARUCO_MIP_36h12*/ cv::aruco::DICT_5X5_50); /***/
   size_t nMarkers(0);                                                                                                    // Number of found markers (must be 1)
   double yaw(0), roll(0), pitch(0);
-  float fSumYaw(0.f), fSumX(0.f), fSumZ(0.f);
-  uint32_t ulYawNo(0), ulX_No(0), ulZ_No(0);
-  float fCorrelatedX(fMovingX);
+  float fSumYaw(0.f), fSumX(0.f), fSumCorrelatedX(0.f), fSumZ(0.f);
+  uint32_t ulYawNo(0), ulX_No(0), ulCorrelatedX_No(0), ulZ_No(0);
+  float fCorrelatedX(fMovingCorrelatedX);
   static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
   static bool isFirst_(true);
+
+  /***/ float fPrevYawTemp(0.f);
+  /***/ bool isFirst(true);
 
   while (pxFramesToCalc.empty() == false)
   {
@@ -311,7 +353,7 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     }
     catch (...)
     {
-      cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+      std::cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
     }
     /*terminate called after throwing an instance of 'cv::Exception'
     what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
@@ -334,9 +376,8 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     double angle = lenVecRotation / 2.f;
     double quat[] = {cos(angle), sin(angle) * r[0], sin(angle) * r[1], sin(angle) * r[2]};
 
-    // Euler angles calculation
     vGetYawRollPitch(quat[0], quat[1], quat[2], quat[3], OUT yaw, OUT roll, OUT pitch);
-
+  
     // Yaw sum calculation
     if (((fabsf(static_cast<float>(yaw) - fMovingYaw) < MISS_RATE_YAW_RAD) && (fabsf(fMovingYaw) < 3.f * PI)) ||
         (fabsf(fMovingYaw > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)))
@@ -347,26 +388,43 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     else
     {
 #ifdef DEBUG_SOFT
-      cout << "Missed yaw is " << yaw * DEGRES_IN_RAD << endl;
+      std::cout << "Missed yaw is " << yaw * DEGRES_IN_RAD << endl;
 #endif
     }
 
     // X sum calculation
-    fCorrelatedX = static_cast<float>(tvecs.at(0)[0]);
-    if ((fMovingYaw < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fTargetYaw < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
-        (fMovingZ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
-      fCorrelatedX = fCorrelatedX - (fMovingYaw - fTargetYaw) * (fMovingZ * 0.04364); // 0.04364 = tg(1) * 2.5
-
-    if (((fabsf(fCorrelatedX - fMovingX) < MISS_RATE_X_METER) && (fabsf(fMovingX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)) ||
+    if (((fabsf(static_cast<float>(tvecs.at(0)[0]) - fMovingX) < MISS_RATE_X_METER) &&
+         (fabsf(fMovingX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)) ||
         (fabsf(fMovingX) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
-      fSumX = fSumX + fCorrelatedX;
+      fSumX = fSumX + tvecs.at(0)[0];
       ulX_No++;
+    }
+
+    // Correlated X sum calculation
+    fCorrelatedX = static_cast<float>(tvecs.at(0)[0]);
+    // (a>0; x>0; right) => a↑ -> x↑; a↓ -> x↓
+    // (a>0; x<0; right) => a↑ -> x↓; a↓ -> x↑
+    // (a<0; x>0; right) => impossible
+    // (a<0; x<0; right) => a↑ -> x↑; a↓ -> x↓
+    // =	=	=	=	=	= = = = = = = = = = = = = = =
+    // (a>0; x>0; left) => a↑ -> x↑; a↓ -> x↓
+    // (a>0; x<0; left) => impossible
+    // (a<0; x>0; left) => a↑ -> x↑; a↓ -> x↓
+    // (a<0; x<0; left) => a↑ -> x↑; a↓ -> x↓
+    if ((fMovingYaw < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fTargetYaw < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
+        (fMovingZ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+      fCorrelatedX = fCorrelatedX - tan(fMovingYaw - fTargetYaw) * fMovingZ; // 0.04364 = tg(1) * 2.5
+    if (((fabsf(fCorrelatedX - fMovingCorrelatedX) < MISS_RATE_X_METER) && (fabsf(fMovingCorrelatedX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)) ||
+        (fabsf(fMovingCorrelatedX) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+    {
+      fSumCorrelatedX = fSumCorrelatedX + fCorrelatedX;
+      ulCorrelatedX_No++;
     }
     else
     {
 #ifdef DEBUG_SOFT
-      cout << "Missed X is " << tvecs.at(0)[0] << " , correlated X is " << fCorrelatedX << endl;
+      std::cout << "Missed X is " << tvecs.at(0)[0] << " , correlated X is " << fCorrelatedX << endl;
 #endif
     }
 
@@ -382,7 +440,7 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     {
 #ifdef DEBUG_SOFT
       if (eStatePosition_ == TEnumStatePosition::STATE_FORWARD)
-        cout << "Missed Z is " << tvecs.at(0)[2] << endl;
+        std::cout << "Missed Z is " << tvecs.at(0)[2] << endl;
 #endif
     }
 
@@ -397,6 +455,7 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
   {
     fAvgYaw = fSumYaw / static_cast<float>(ulYawNo);
     fAvgX = fSumX / static_cast<float>(ulX_No);
+    fCorrelatedAvgX = fSumCorrelatedX / static_cast<float>(ulCorrelatedX_No);
     fAvgZ = fSumZ / static_cast<float>(ulZ_No);
   }
   else
@@ -412,12 +471,12 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
  *  @details Caluclation of moving average at the far point and sending a packet of trajectory correction coefficients to the WCU
  *  @note At the closest point we only memorize the arithmetic mean value
  */
-static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float &fAvgYaw, float &fAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
-                                      OUT float &fMovingAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon)
+static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float &fAvgYaw, float &fAvgX, float &fCorrelatedAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
+                                      OUT float &fMovingCorrelatedAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon)
 {
   float fCoefRotation(0.f), fCoefTranslation(0.f); // Coefficients of rotation and translation
   int16_t ssCoefShift(0);
-  static float fYawForward_(0.f), fX_Forward_(0.f), fZ_Forward_(0.f); // Calculated values at the point closest to the marker
+  static float fYawForward_(0.f), fX_Forward_(0.f), fCorrelatedX_Forward_(0.f), fZ_Forward_(0.f); // Calculated values at the point closest to the marker
   static float fPeriod_(0.f), fAmplitude_(0.f);
   /***/ static size_t nTemp(0), nTemp1(0);
 
@@ -428,6 +487,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     // Memorize values
     fYawForward_ = fAvgYaw;
     fX_Forward_ = fAvgX;
+    fCorrelatedX_Forward_ = fCorrelatedAvgX;
     fZ_Forward_ = fAvgZ;
 
     // Waiting for movement to start
@@ -473,6 +533,17 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     if (fTemp < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
       xAvgPeriodX_.push_back(fTemp);
 
+    // Correlated X calculation
+    fTemp = IMPOSSIBLE_YAW_X_Z_VALUE;
+    if ((fabsf(fCorrelatedX_Forward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fCorrelatedAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+      fTemp = (4.f * fCorrelatedX_Forward_ + fCorrelatedAvgX) / 5.f;
+    if ((fabsf(fCorrelatedX_Forward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fCorrelatedAvgX) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)))
+      fTemp = fCorrelatedX_Forward_;
+    if ((fabsf(fCorrelatedX_Forward_) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)) && (fabsf(fCorrelatedAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+      fTemp = fCorrelatedAvgX;
+    if (fTemp < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
+      xCorrelatedAvgPeriodX_.push_back(fTemp);
+
     // Z calculation
     fTemp = IMPOSSIBLE_YAW_X_Z_VALUE;
     if (fabsf(fZ_Forward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
@@ -496,7 +567,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     while (xAvgPeriodYaw_.size() > COUNT_MEASUREMENT_FOR_MOVING_AVG)
       xAvgPeriodYaw_.erase(xAvgPeriodYaw_.begin());
 
-    // X vector alignment
+    // Correlated X vector alignment
     fTemp = IMPOSSIBLE_YAW_X_Z_VALUE;
     if ((xAvgPeriodX_.size() < COUNT_MEASUREMENT_FOR_MOVING_AVG) && (xAvgPeriodX_.empty() == false))
     {
@@ -538,7 +609,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     i = 1;
     for (auto &v : xAvgPeriodX_)
       fSumTemp += v * (i++);
-    fMovingAvgX = fSumTemp / ((pow(COUNT_MEASUREMENT_FOR_MOVING_AVG, 2.f) + COUNT_MEASUREMENT_FOR_MOVING_AVG) / 2);
+    fMovingCorrelatedAvgX = fSumTemp / ((pow(COUNT_MEASUREMENT_FOR_MOVING_AVG, 2.f) + COUNT_MEASUREMENT_FOR_MOVING_AVG) / 2);
     fSumTemp = 0.f;
     i = 1;
     for (auto &v : xAvgPeriodZ_)
@@ -546,19 +617,19 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     fMovingAvgZ = fSumTemp / ((pow(COUNT_MEASUREMENT_FOR_MOVING_AVG, 2.f) + COUNT_MEASUREMENT_FOR_MOVING_AVG) / 2);
 
     // If the measurement is successful, we take it inti account
-    if ((xAvgPeriodYaw_.back() < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (xAvgPeriodX_.back() < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
+    if ((xAvgPeriodYaw_.back() < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (xCorrelatedAvgPeriodX_.back() < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
         (xAvgPeriodZ_.back() < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
       nMeasurement++;
 
     // if moving averages are calculated, then calculation of trajectory adjustment coefficients
-    if ((fabsf(fMovingAvgYaw) > FLOAT_EPSILON) && (fabsf(fMovingAvgX) > FLOAT_EPSILON) && (fabsf(fMovingAvgZ) > FLOAT_EPSILON) &&
-        (fabsf(fMovingAvgYaw) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fMovingAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
+    if ((fabsf(fMovingAvgYaw) > FLOAT_EPSILON) && (fabsf(fMovingCorrelatedAvgX) > FLOAT_EPSILON) && (fabsf(fMovingAvgZ) > FLOAT_EPSILON) &&
+        (fabsf(fMovingAvgYaw) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fMovingCorrelatedAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
         (fabsf(fMovingAvgZ) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
-      float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
-      prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingAvgX, fDistance, fTargetYaw_, fTargetX_, fTargetDistance_,
+      float fDistance = sqrt(pow(fMovingCorrelatedAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
+      prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingCorrelatedAvgX, fDistance, xTarget_.fYaw, xTarget_.fX, xTarget_.fZ, xTarget_.fDistance,
                                         OUT fCoefRotation, OUT fCoefTranslation, OUT ssCoefShift, fPeriod_, fAmplitude_);
-      if (((1.5 * fMovingAvgX) > fMovingAvgZ) || (fZ_Forward_ > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+      if (((1.5 * fMovingCorrelatedAvgX) > fMovingAvgZ) || (fMovingCorrelatedAvgX < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
         ssCoefShift = -1;
     }
 
@@ -591,7 +662,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     eStatePosition_ = TEnumStatePosition::STATE_NONE;
 
 #ifdef DEBUG_SOFT
-    vDebugFunction(fMovingAvgYaw, fMovingAvgX, fMovingAvgZ, xFileToSave, fCoefRotation, fCoefTranslation, ssCoefShift, fTargetYaw_, fTargetX_);
+    vDebugFunction(fMovingAvgYaw, fMovingCorrelatedAvgX, fMovingAvgZ, xFileToSave, fCoefRotation, fCoefTranslation, ssCoefShift, xTarget_.fYaw, xTarget_.fX);
 #endif
   }
   break;
@@ -603,23 +674,16 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDistance, float &fTargetYaw, float &fTargetX,
+static void prvRoataionTranslationCalculation(float &fYaw, float &fCorrelatedX, float fDistance, float &fTargetYaw, float &fTargetX, float &fTargetZ,
                                               float &fTargetDistance, OUT float &fCoefRotation, OUT float &fCoefTranslation,
                                               OUT int16_t &ssCoefShift, float &fPeriod, float &fAmplitude)
 {
   static float fIntegralErrorYaw(0.f), fIntegralErrorX(0.f);
   static bool isShiftCalcNow(false);
   float fErrorYaw = fTargetYaw - fYaw;
-  float fErrorX = fTargetX - fX;
+  float fErrorX = fTargetX - fCorrelatedX;
 
-  cout << "Target yaw = " << fTargetYaw << " ( " << (fTargetYaw * DEGRES_IN_RAD) << " degres)" << " ;  target X = " << fTargetX << " ( " << (fTargetX * 100.f) << " cm);" << endl;
-  cout << "Moving Yaw = " << fMovingAvgYaw_ << " ( " << (fMovingAvgYaw_ * DEGRES_IN_RAD) << " degres);" << endl;
-  cout << "Moving X = " << fMovingAvgX_ << " ( " << (fMovingAvgX_ * 100.f) << " cm);" << endl;
-  cout << "Moving distance = " << fDistance << " ( " << (fDistance * 100.f) << " cm);" << endl;
-  cout << "Coef rotation = " << fCoefRotation << " ; Coef translation = " << fCoefTranslation << " ; Coef shift = " << ssCoefShift << endl;
-  cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
-
-  if ((fYaw > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fX > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+  if ((fYaw > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fCorrelatedX > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     goto return_prvRoataionTranslationCalculation;
 
   // Calculation integral errors
@@ -642,12 +706,12 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDis
 
   if (fabsf(fCoefRotation) > 0.5)
   {
-    cout << "!!! Rotation coefficient more than 50 per cent !!!" << endl;
+    std::cout << "!!! Rotation coefficient more than 50 per cent !!!" << endl;
     fCoefRotation = fCoefRotation > 0.f ? 0.5 : -0.5;
   }
   if (fabsf(fCoefTranslation) > 0.5)
   {
-    cout << "!!! Translation coefficient more than 50 per cent !!!" << endl;
+    std::cout << "!!! Translation coefficient more than 50 per cent !!!" << endl;
     fCoefTranslation = fCoefTranslation > 0.f ? 0.5 : -0.5;
   }
 
@@ -683,13 +747,13 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   {
     /***/ static size_t err = 0;
     ret = false;
-    cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
+    std::cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
   }
   else
   {
     if ((pxPacketIn->ucIdPacket == ID_PACKET_IN_OU_RESET_WAS) && (isResetWas_ == false))
     {
-      isFirstRunAfterReset_ = true;
+      /***/ asm("NOP"); // isFirstRunAfterReset_ = true;
     }
     else
     {
@@ -708,7 +772,7 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
 /** @brief Calculation of setpoint values by median average
  *
  */
-static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_ToCalc, vector<double> &xDistanceToCalc,
+static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_ToCalc, vector<double> &xZ_ToCalc,
                                OUT float &fYaw, OUT float &fX, OUT float &fZ)
 {
   bool isRetSuccess(true);
@@ -726,7 +790,7 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   const float SEARCH_STEP_Z = 0.1;
   std::map<size_t, float> xCountMedianYaw;
   std::map<size_t, float> xCountMedianX;
-  std::map<size_t, float> xCountMedianDistance;
+  std::map<size_t, float> xCountMedianZ;
   size_t count(0);
   size_t nValuesToCalcTarget(xYawToCalc.size());
 
@@ -750,10 +814,10 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   for (float value = SEARCH_RANGE_START_Z; value <= (SEARCH_RANGE_START_Z + SEARCH_RANGE_Z); value += SEARCH_STEP_Z)
   {
     count = 0;
-    for (auto &v : xDistanceToCalc)
+    for (auto &v : xZ_ToCalc)
       if ((v > (value - SEARCH_STEP_Z)) && (v < (value + SEARCH_STEP_Z)))
         count++;
-    xCountMedianDistance[count] = value;
+    xCountMedianZ[count] = value;
   }
 
   // Finding the average values
@@ -773,8 +837,8 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   else
     isRetSuccess = false;
 
-  cout << "The percentage of calculated frames to YAW to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
-  cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  std::cout << "The percentage of calculated frames to YAW to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
+  std::cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
 
   iter = xCountMedianX.end();
   iter--;
@@ -792,15 +856,15 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   else
     isRetSuccess = false;
 
-  cout << "The percentage of calculated frames to X to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
-  cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  std::cout << "The percentage of calculated frames to X to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
+  std::cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
 
-  iter = xCountMedianDistance.end();
+  iter = xCountMedianZ.end();
   iter--;
   medianValue = iter->second;
   fSum = 0.f;
   count = 0;
-  for (auto &v : xDistanceToCalc)
+  for (auto &v : xZ_ToCalc)
     if ((v > (medianValue - MISS_RATE_Z_METER)) && (v < (medianValue + MISS_RATE_Z_METER)))
     {
       count++;
@@ -811,11 +875,13 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   else
     isRetSuccess = false;
 
-  cout << "The percentage of calculated frames to DISTANCE to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
-  cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  std::cout << "The percentage of calculated frames to Z to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
+  std::cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+
+  float fDistance = sqrt(pow(fX, 2) + pow(fZ, 2));
 
 #if DEBUG_SOFT > 2
-  xFileToSave << std::to_string(fYaw * DEGRES_IN_RAD) + "	" << std::to_string(fX) << +" " << std::to_string(fZ) << endl;
+  xFileToSave << std::to_string(fYaw * DEGRES_IN_RAD) + "	" << std::to_string(fX) << +" " << std::to_string(fDistance) << endl;
 #endif
 
   return isRetSuccess;
