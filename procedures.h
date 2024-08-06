@@ -59,7 +59,7 @@ bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT 
 
 void vGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &yaw, OUT double &roll, OUT double &pitch);
 
-void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ, std::ofstream &xFileToSave,
-                      float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift, float fTargetYaw, float fTargetX);
+void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingCorrelatedAvgX, float &fMovingAvgZ, std::ofstream &xFileToSave,
+                    float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift, float fTargetYaw, float fTargetX);
 
 #endif // PROCEDURES_H_                      

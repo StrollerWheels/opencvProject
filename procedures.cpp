@@ -85,6 +85,7 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
   {
   case TEnumRiscBehavior::RISC_WRONG_INPUT_COMBINATION:
     std::cout << " ! ! ! Wrong input combination ! ! ! " << endl;
+    /***/return;
     break;
   case TEnumRiscBehavior::RISC_CAMERA_PROBLEM:
     std::cout << " ! ! ! Camera problems ! ! ! " << endl;
@@ -244,7 +245,7 @@ void vGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &ya
 /**
  * @brief Output debugging information and save it to a file
  */
-void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ, ofstream &xFileToSave,
+void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingCorrelatedAvgX, float &fMovingAvgZ, std::ofstream &xFileToSave,
                     float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift, float fTargetYaw, float fTargetX)
 {
   float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
@@ -252,6 +253,8 @@ void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingAvgZ
   std::cout << "Target yaw = " << fTargetYaw << " ( " << (fTargetYaw * DEGRES_IN_RAD) << " degres)" << " ;  target X = " << fTargetX << " ( " << (fTargetX * 100.f) << " cm);" << endl;
   std::cout << "Moving Yaw = " << fMovingAvgYaw << " ( " << (fMovingAvgYaw * DEGRES_IN_RAD) << " degres);" << endl;
   std::cout << "Moving X = " << fMovingAvgX << " ( " << (fMovingAvgX * 100.f) << " cm);" << endl;
+  std::cout << "Moving correlated X = " << fMovingCorrelatedAvgX << " ( " << (fMovingCorrelatedAvgX * 100.f) << " cm);" << endl;
+  std::cout << "Moving Z = " << fMovingAvgZ << " ( " << (fMovingAvgZ * 100.f) << " cm);" << endl;
   std::cout << "Moving distance = " << fDistance << " ( " << (fDistance * 100.f) << " cm);" << endl;
   std::cout << "Coef rotation = " << fCoefRot << " ; Coef translation = " << fCoefTransl << " ; Coef shift = " << ssCoefShift << endl;
   std::cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
