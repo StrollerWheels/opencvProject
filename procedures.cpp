@@ -55,8 +55,8 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   do
   {
     xCaptureFrame.open(CAMERA_NUMBER, cv::CAP_V4L2);
-    if (xCaptureFrame.isOpened() == false)
-      std::cout << "Cannot open camera" << endl;
+    if (xCaptureFrame.isOpened() == false)    
+      std::cout << "Cannot open camera" << endl;            
     this_thread::sleep_for(1000ms);
   } while (xCaptureFrame.isOpened() == false);
 

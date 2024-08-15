@@ -673,6 +673,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     }
 
     /***/ float temp(0.f), temp1(0.f);
+    this_thread::sleep_for(1500ms);
     for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
     {
       if (prvSendPacketToStroller(/*temp, temp, temp1,*/ fCoefRotation, fCoefTranslation, ssCoefShift, OUT fPeriod_, OUT fAmplitude_) == false)
