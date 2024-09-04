@@ -727,25 +727,34 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fCorrelatedX, 
   fCoefTranslation = fErrorX * COEF_PROPORTIONAL_X + fIntegralErrorX * COEF_INTEGRAL_X * fPeriod;
 
   // Calculation shift coefficient
-  if (fDistance < MINIMAL_DISTANCE_VALUE_METER)
-    ssCoefShift = (-1) * static_cast<int16_t>(floor((fTargetDistance - fDistance) / (0.1) / fAmplitude));
+  if (fDistance < MINIMAL_DISTANCE_VALUE_METER) /***/
+    ssCoefShift = (-1); //* static_cast<int16_t>(floor((fTargetDistance - fDistance) / (0.1) / fAmplitude));
+  if (fDistance < MINIMAL_DISTANCE_VALUE_METER_TWO_SHIFT) /***/
+    ssCoefShift = (-2);  
   if (fDistance > fTargetDistance)
     ssCoefShift = floor((fDistance - fTargetDistance) / (0.1) / fAmplitude);
-  if (abs(ssCoefShift) > 1) /***/
-    ssCoefShift = ssCoefShift > 0 ? 1 : -1;
+    /***/
+  if (ssCoefShift > 2)  //(abs(ssCoefShift) > 2) 
+  {
+    ssCoefShift = 2; //ssCoefShift > 0 ? 2 : -2;
+  } else {
+    if (ssCoefShift > 1) //(abs(ssCoefShift) > 1)
+      ssCoefShift = 1; //ssCoefShift > 0 ? 1 : -1;
+  }
+  
   if (isShiftCalcNow == false)
     ssCoefShift = 0;
   isShiftCalcNow = isShiftCalcNow == true ? false : true;
 
-  if (fabsf(fCoefRotation) > 0.5)
+  if (fabsf(fCoefRotation) > 0.7)
   {
     std::cout << "!!! Rotation coefficient more than 50 per cent !!!" << endl;
-    fCoefRotation = fCoefRotation > 0.f ? 0.5 : -0.5;
+    fCoefRotation = fCoefRotation > 0.f ? 0.7 : -0.7;
   }
-  if (fabsf(fCoefTranslation) > 0.5)
+  if (fabsf(fCoefTranslation) > 0.7)
   {
     std::cout << "!!! Translation coefficient more than 50 per cent !!!" << endl;
-    fCoefTranslation = fCoefTranslation > 0.f ? 0.5 : -0.5;
+    fCoefTranslation = fCoefTranslation > 0.f ? 0.7 : -0.7;
   }
 
 return_prvRoataionTranslationCalculation:

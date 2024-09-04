@@ -50,5 +50,6 @@ constexpr float IMPOSSIBLE_YAW_X_Z_VALUE = 100.f; ///< Moving average is initiat
 constexpr float IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT = (IMPOSSIBLE_YAW_X_Z_VALUE - FLOAT_EPSILON); ///< Moving average is initiated by this value
 const float TARGET_DISTANCE_VALUE_METER = 0.65; /// @note Zoom in. when the camera will replace
 const float MINIMAL_DISTANCE_VALUE_METER = 0.61; /// @note Zoom in. when the camera will replace
+const float MINIMAL_DISTANCE_VALUE_METER_TWO_SHIFT = 0.55; /// @note Zoom in. when the camera will replace
 
 #endif // SETTINGS_H_
