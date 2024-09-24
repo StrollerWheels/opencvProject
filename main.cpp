@@ -769,11 +769,11 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   bool ret(true);
   int res(0);
   string sError;
-  static TProtocolInWcuMotionCmd xPacketOut_;
+  static TProtocolInScuMotionCmd xPacketOut_;
   TProtocolInOuCondition *pxPacketIn = reinterpret_cast<TProtocolInOuCondition *>(&xPacketOut_);
 
   xPacketOut_.usPreambule = PREAMBULE_IN_WCU;
-  xPacketOut_.ucIdPacket = ID_PACKET_IN_WCU_MOTION_CMD;
+  xPacketOut_.eIdPacketAruco = ID_PACKET_IN_WCU_MOTION_CMD;
   xPacketOut_.fRotation = fCoefRotation;
   xPacketOut_.fTranslation = fCoefTranslation;
   xPacketOut_.ssShift = ssShift;
@@ -793,14 +793,6 @@ static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslatio
   }
   else
   {
-    if ((pxPacketIn->ucIdPacket == ID_PACKET_IN_OU_RESET_WAS) && (isResetWas_ == false))
-    {
-      /***/ asm("NOP"); // isFirstRunAfterReset_ = true;
-    }
-    else
-    {
-      isResetWas_ = false;
-    }
     fPeriod = pxPacketIn->fPeriod;
     fAmplitude = pxPacketIn->fAmplitude;
   }

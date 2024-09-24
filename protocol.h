@@ -33,7 +33,7 @@
  *                              <------------ GPIO.0 = LOW ; GPIO.1 = HIGH
  *                        frame capture
  *                              <------------ GPIO.0 = GPIO.1 = LOW
- * TProtocolInWcuMotionCmd      <===========> TProtocolInOuCondition
+ * TProtocolInScuMotionCmd      <===========> TProtocolInOuCondition
  * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
  *                                     closest point movement
  *                              <------------ GPIO.0 = HIGH ; GPIO.1 = LOW
@@ -42,7 +42,7 @@
  *                                     far point movement
  *                              <------------ GPIO.0 = LOW ; GPIO.1 = HIGH
  *                              <------------ GPIO.0 = GPIO.1 = LOW
- * TProtocolInWcuMotionCmd      <===========> TProtocolInOuCondition
+ * TProtocolInScuMotionCmd      <===========> TProtocolInOuCondition
  * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
  * ...
  * ...
@@ -68,27 +68,29 @@
 
 
 /// Максимальный размер валидного пакета
-#define MAX_SIZE_ARUCO_PACKET \
-  ((sizeof(TProtocolInWcuMotionCmd) > sizeof(TProtocolPullUpToMarker)) ? \
-      ((sizeof(TProtocolInWcuMotionCmd) > sizeof(TProtocolInWcuReceiptRequest)) ? \
-          sizeof(TProtocolInWcuMotionCmd) : sizeof(TProtocolInWcuReceiptRequest)) : \
-      ((sizeof(TProtocolPullUpToMarker) > sizeof(TProtocolInWcuReceiptRequest)) ? \
-          sizeof(TProtocolPullUpToMarker) : sizeof(TProtocolInWcuReceiptRequest)))
+#define MAX_SIZE_ARUCO_PACKET (sizeof(TProtocolInScuMotionCmd))
 /** @name
- * ### Preambules and packets ID
+ * ### Packet preambules 
  * @{
  */
 #define PREAMBULE_IN_WCU (0x5555)
 #define PREAMBULE_IN_OU (0x9999)
-#define ID_PACKET_IN_WCU_MOTION_CMD (0x01)
-#define ID_PACKET_IN_OU_CONDITION (0x11)
-#define ID_PACKET_IN_WCU_PULL_UP_TO_MARKER (0x02)
-#define ID_PACKET_IN_WCU_RECEIPT_REQUEST (0x03)
-#define ID_PACKET_IN_OU_CONFIRMATION (0x13)
-#define ID_PACKET_IN_WCU_READY_TO_START (0x04)
-/// On reset the stroller assign s a field value "ucIdPacket" equal to this constant three packets in a row
-#define ID_PACKET_IN_OU_RESET_WAS (0x03)
 /// @}
+
+
+/// Packet ID in Aruco protocol
+typedef enum
+{
+  ID_PACKET_IN_WCU_MOTION_CMD = 0x01,              ///<
+  ID_PACKET_IN_WCU_IMPOSSIBLE_CALC_SETPOINT = 0x81,///<
+  ID_PACKET_IN_WCU_SIDEWAYS_DRIFT_EXCEEDED_PERMISSIBLE = 0x82, ///<
+  ID_PACKET_IN_WCU_ROTATION_ANGLE_EXCEEDED_PERMISSIBLE = 0x83, ///<
+  ID_PACKET_IN_WCU_MARKER_IS_GONE = 0x84, ///<
+  ID_PACKET_IN_WCU_MANY_MISSES = 0x85, ///<
+  ID_PACKET_IN_WCU_CAMERA_PROBLEM = 0x86, ///<
+  ID_PACKET_IN_OU_CONDITION = 0x11, ///<
+}TEnumeIdPAcketAruco;
+
 
 
 /// Regular packet with a motion command. It is sent after the far point
@@ -96,7 +98,7 @@
 typedef struct
 {
   uint16_t usPreambule; ///< Преамбула пакета, ```= 0x5555```
-  uint8_t ucIdPacket; ///< Идентификатор пакета (= 0x01)
+  TEnumeIdPAcketAruco eIdPacketAruco; ///< Идентификатор пакета = ID_PACKET_IN_WCU_MOTION_CMD
   /** @note Rotation and translation coefficients,
   shift command start to be taken in the stroller driver at the closest point, phase PI/2 */
   float fRotation; ///< Rotation coefficient, absolute
@@ -106,7 +108,7 @@ typedef struct
    * @endcode */
   int16_t ssShift; ///< Shift the skating path; >0 - forward, <0 - back
   uint16_t crc16; ///< Контрольная сумма, см. @ref crc16.c
-}TProtocolInWcuMotionCmd;
+}TProtocolInScuMotionCmd;
 #pragma pack(pop)
 
 
@@ -115,64 +117,12 @@ typedef struct
 typedef struct
 {
   uint16_t usPreambule; ///< Преамбула пакета, ```= 0x9999```, @ref PREAMBULE_IN_OU
-  /** Идентификатор пакета ответа (= 0x11);
-  if there was a stroller reset, the ID will be @ID_PACKET_RESET_WAS three packets in a row */
-  uint8_t ucIdPacket; ///< Идентификатор пакета ответа (= 0x02);
+  TEnumeIdPAcketAruco eIdPacketAruco; ///< Идентификатор пакета ответа (= ID_PACKET_IN_OU_CONDITION);
   float fPeriod; ///< Period, in seconds;
   float fAmplitude; ///< Amplitude, in meters
   uint16_t nHallError; ///< Count of Hall errors
   uint16_t crc16; ///< Контрольная сумма, см. @ref crc16.c
 }TProtocolInOuCondition;
-#pragma pack(pop)
-
-
-/** A packet with the distance you need to drive to the marker.
-Only at the begginning of the skating is used */
-#pragma pack(push,1)
-typedef struct
-{
-  uint16_t usPreambule; ///< @ref PREAMBULE_IN_WCU
-  uint8_t ucIdPacket; ///< 0x02, @ref ID_PACKET_IN_WCU_PULL_UP_TO_MARKER
-  float fDistance; ///< Distance in meters
-  uint16_t crc16; ///< @ref crc16.c
-}TProtocolPullUpToMarker;
-#pragma pack(pop)
-
-
-/// Packet receipt request from
-#pragma pack(push,1)
-typedef struct
-{
-  uint16_t usPreambule; ///< 0x5555, @ref PREAMBULE_IN_WCU
-  uint8_t ucIdPacket; ///< 0x03, @ref ID_PACKET_IN_WCU_RECEIPT_REQUEST
-  uint8_t ucPacketRequestId; ///< Unused. Needed for reply packet
-  uint16_t crc16; ///< @ref crc16.c
-}TProtocolInWcuReceiptRequest;
-#pragma pack(pop)
-
-
-/// Packet receipt request from
-#pragma pack(push,1)
-typedef struct
-{
-  uint16_t usPreambule; ///< @ref PREAMBULE_IN_OU
-  uint8_t ucIdPacket; ///< 0x13, @ref ID_PACKET_IN_OU_CONFIRMATION
-  /** Reception result code.
-  If the reception is successful, the received packet id; else 0xFF */
-  uint8_t ucResultCode;
-  uint16_t crc16; ///< @ref crc16.c
-}TProtocolInOuConfirmation;
-#pragma pack(pop)
-
-
-/// OU ready packet
-#pragma pack(push,1)
-typedef struct
-{
-  uint16_t usPreambule; ///< @ref PREAMBULE_IN_WCU
-  uint8_t ucIdPacket; ///< 0x13, @ref ID_PACKET_IN_WCU_READY_TO_START
-  uint16_t crc16; ///< @ref crc16.c
-}TProtocolInWcuReadyToStart;
 #pragma pack(pop)
 
 
