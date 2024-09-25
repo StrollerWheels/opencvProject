@@ -79,6 +79,16 @@
 
 
 /// Packet ID in Aruco protocol
+#ifdef __cplusplus
+#define ID_PACKET_IN_WCU_MOTION_CMD (0x01)              ///<
+#define ID_PACKET_IN_WCU_IMPOSSIBLE_CALC_SETPOINT (0x81) ///<
+#define ID_PACKET_IN_WCU_SIDEWAYS_DRIFT_EXCEEDED_PERMISSIBLE (0x82) ///<
+#define ID_PACKET_IN_WCU_ROTATION_ANGLE_EXCEEDED_PERMISSIBLE (0x83) ///<
+#define ID_PACKET_IN_WCU_MARKER_IS_GONE (0x84) ///<
+#define ID_PACKET_IN_WCU_MANY_MISSES (0x85) ///<
+#define ID_PACKET_IN_WCU_CAMERA_PROBLEM (0x86) ///<
+#define ID_PACKET_IN_OU_CONDITION (0x11) ///<
+#else
 typedef enum
 {
   ID_PACKET_IN_WCU_MOTION_CMD = 0x01,              ///<
@@ -90,6 +100,7 @@ typedef enum
   ID_PACKET_IN_WCU_CAMERA_PROBLEM = 0x86, ///<
   ID_PACKET_IN_OU_CONDITION = 0x11, ///<
 }TEnumeIdPAcketAruco;
+#endif
 
 
 
@@ -98,7 +109,12 @@ typedef enum
 typedef struct
 {
   uint16_t usPreambule; ///< Преамбула пакета, ```= 0x5555```
-  TEnumeIdPAcketAruco eIdPacketAruco; ///< Идентификатор пакета = ID_PACKET_IN_WCU_MOTION_CMD
+  /// Идентификатор пакета = ID_PACKET_IN_WCU_MOTION_CMD
+  #ifdef __cplusplus
+  uint8_t eIdPacketAruco;
+  #else
+  TEnumeIdPAcketAruco eIdPacketAruco;
+  #endif
   /** @note Rotation and translation coefficients,
   shift command start to be taken in the stroller driver at the closest point, phase PI/2 */
   float fRotation; ///< Rotation coefficient, absolute
@@ -117,7 +133,12 @@ typedef struct
 typedef struct
 {
   uint16_t usPreambule; ///< Преамбула пакета, ```= 0x9999```, @ref PREAMBULE_IN_OU
-  TEnumeIdPAcketAruco eIdPacketAruco; ///< Идентификатор пакета ответа (= ID_PACKET_IN_OU_CONDITION);
+  /// Идентификатор пакета = ID_PACKET_IN_WCU_MOTION_CMD
+  #ifdef __cplusplus
+  uint8_t eIdPacketAruco;
+  #else
+  TEnumeIdPAcketAruco eIdPacketAruco;
+  #endif
   float fPeriod; ///< Period, in seconds;
   float fAmplitude; ///< Amplitude, in meters
   uint16_t nHallError; ///< Count of Hall errors
