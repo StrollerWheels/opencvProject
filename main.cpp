@@ -80,7 +80,6 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
 static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDistance, float &fTargetYaw, float &fTargetX, float &fTargetZ,
                                               float &fTargetDistance, OUT float &fCoefRotation, OUT float &fCoefTranslation,
                                               OUT int16_t &ssCoefShift, float &fPeriod, float &fAmplitude);
-static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude);
 static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xCorrelatedX_ToCalc, vector<double> &xZ_ToCalc,
                                OUT float &fYaw, OUT float &fX, OUT float &fZ);
 
@@ -140,10 +139,14 @@ int main(int argc, char *argv[])
 
       isResetWas_ = true;
       isFirstRunAfterReset_ = false;
+      auto xTimeStart = std::chrono::steady_clock::now();
+      auto xTimeEnd = std::chrono::steady_clock::now();
       // Frames capture
       while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
-             (xYawsToCalcTarget_.size() < COUNT_FRAMES_TO_CALC_TARGET))
+             (xYawsToCalcTarget_.size() < COUNT_FRAMES_TO_CALC_TARGET) && 
+             (std::chrono::duration_cast<std::chrono::seconds>(xTimeEnd - xTimeStart).count() < SAFETY_TIME_TO_CALC_SETPOINT_SEC))
       {
+        xTimeEnd = std::chrono::steady_clock::now();
         if (bCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
           vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
         else
@@ -193,7 +196,7 @@ int main(int argc, char *argv[])
       int16_t ssTemp(0);
       for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
       {
-        if (prvSendPacketToStroller(fTemp, fTemp1, ssTemp, OUT fTemp2, OUT fTemp3) == true)
+        if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fTemp, fTemp1, ssTemp, OUT fTemp2, OUT fTemp3) == true)
           asm("NOP");
         this_thread::sleep_for(5ms);
       }
@@ -676,7 +679,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     this_thread::sleep_for(1500ms);
     for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
     {
-      if (prvSendPacketToStroller(/*temp, temp, temp1,*/ fCoefRotation, fCoefTranslation, ssCoefShift, OUT fPeriod_, OUT fAmplitude_) == false)
+      if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, OUT fPeriod_, OUT fAmplitude_) == false)
         asm("NOP");
       this_thread::sleep_for(5ms);
     }
@@ -759,45 +762,6 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fCorrelatedX, 
 
 return_prvRoataionTranslationCalculation:
   return;
-}
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-static bool prvSendPacketToStroller(float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude)
-{
-  bool ret(true);
-  int res(0);
-  string sError;
-  static TProtocolInScuMotionCmd xPacketOut_;
-  TProtocolInOuCondition *pxPacketIn = reinterpret_cast<TProtocolInOuCondition *>(&xPacketOut_);
-
-  xPacketOut_.usPreambule = PREAMBULE_IN_WCU;
-  xPacketOut_.eIdPacketAruco = ID_PACKET_IN_WCU_MOTION_CMD;
-  xPacketOut_.fRotation = fCoefRotation;
-  xPacketOut_.fTranslation = fCoefTranslation;
-  xPacketOut_.ssShift = ssShift;
-  xPacketOut_.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_) - 2);
-
-  errno = 0;
-  if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
-    vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
-
-  /***/ static size_t all = 0;
-  all++;
-  if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
-  {
-    /***/ static size_t err = 0;
-    ret = false;
-    std::cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
-  }
-  else
-  {
-    fPeriod = pxPacketIn->fPeriod;
-    fAmplitude = pxPacketIn->fAmplitude;
-  }
-
-  return ret;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

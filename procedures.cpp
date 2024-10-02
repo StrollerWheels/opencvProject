@@ -22,6 +22,8 @@
 
 #include "procedures.h"
 #include "settings.h"
+#include "protocol.h"
+#include "crc.h"
 
 using namespace std;
 using namespace cv;
@@ -30,6 +32,8 @@ extern cv::Mat xMarkerPoints;
 extern Mat xCameraMatrix, xDistCoefficients; ///< Camera calibration settings
 
 static bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients);
+
+static void prvAlertWCU(uint8_t ucEvent);
 
 /**
  * @brief Initialization function
@@ -52,13 +56,16 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
     vRiscBehavior(TEnumRiscBehavior::RISC_INVALID_CAMERA_FILE, "The settings file cannot be opened");
 
   // Open camera
+  size_t nAttemptOpen = 10;
   do
   {
     xCaptureFrame.open(CAMERA_NUMBER, cv::CAP_V4L2);
     if (xCaptureFrame.isOpened() == false)    
       std::cout << "Cannot open camera" << endl;            
-    this_thread::sleep_for(1000ms);
-  } while (xCaptureFrame.isOpened() == false);
+    this_thread::sleep_for(100ms);
+  } while ((xCaptureFrame.isOpened() == false) && (nAttemptOpen-- > 2));
+  if (nAttemptOpen < 3)
+    vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to open a camera");
 
   // Camera setup
   xCaptureFrame.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
@@ -89,6 +96,7 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
     break;
   case TEnumRiscBehavior::RISC_CAMERA_PROBLEM:
     std::cout << " ! ! ! Camera problems ! ! ! " << endl;
+    prvAlertWCU(ID_PACKET_IN_WCU_CAMERA_PROBLEM);
     break;
   case TEnumRiscBehavior::RISC_INVALID_CAMERA_FILE:
     std::cout << " ! ! ! Invalid camera file ! ! ! " << endl;
@@ -97,11 +105,9 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
   case TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET:
     std::cout << " ! ! ! PACKET SENDING ERROR ! ! ! " << endl;
   case TEnumRiscBehavior::RISC_CANNOT_CALC_TRAGET:
-    std::cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;
+    std::cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;    
     std::cout << sError << endl;
-    for (;;)
-    {
-    }
+    prvAlertWCU(ID_PACKET_IN_WCU_IMPOSSIBLE_CALC_SETPOINT);
   default:
     std::cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
     break;
@@ -131,6 +137,7 @@ bool bCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts)
       if (xCapture.isOpened() == false)
       {
         std::cout << "Cannot open camera" << endl;
+        vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
         continue;
       }
 
@@ -265,6 +272,45 @@ void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingCorr
 #endif
 }
 
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+// = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude)
+{
+  bool ret(true);
+  int res(0);
+  string sError;
+  static TProtocolInScuMotionCmd xPacketOut_;
+  TProtocolInOuCondition *pxPacketIn = reinterpret_cast<TProtocolInOuCondition *>(&xPacketOut_);
+
+  xPacketOut_.usPreambule = PREAMBULE_IN_WCU;
+  xPacketOut_.eIdPacketAruco = ucId;
+  xPacketOut_.fRotation = fCoefRotation;
+  xPacketOut_.fTranslation = fCoefTranslation;
+  xPacketOut_.ssShift = ssShift;
+  xPacketOut_.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_) - 2);
+
+  errno = 0;
+  if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
+    vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
+
+  /***/ static size_t all = 0;
+  all++;
+  if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
+  {
+    /***/ static size_t err = 0;
+    ret = false;
+    std::cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
+  }
+  else
+  {
+    fPeriod = pxPacketIn->fPeriod;
+    fAmplitude = pxPacketIn->fAmplitude;
+  }
+
+  return ret;
+}
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -279,4 +325,17 @@ bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, O
   fs["camera_matrix"] >> xCameraMatrix;
   fs["distortion_coefficients"] >> xDistCoefficients;
   return true;
+}
+
+
+void prvAlertWCU(uint8_t ucEventId)
+{
+  float fTempIn1(0.f), fTempIn2(0.f), fTempOut1(0.f), fTempOut2(0.f);
+  int16_t ssTempIn(0.f);
+
+  for ( ; ; )
+  {
+    bSendPacketToStroller(ucEventId, fTempIn1, fTempIn2, ssTempIn, OUT fTempOut1, OUT fTempOut2);    
+    this_thread::sleep_for(2000ms);
+  }
 }

@@ -14,6 +14,23 @@
 #ifndef SETTINGS_H_
 #define SETTINGS_H_
 
+/* = SAFETY = ATTENTION = SAFETY = SAFETY = ATTENTION = SAFETY = SAFETY = ATTENTION = SAFETY = SAFETY = ATTENTION = SAFETY = SAFETY = ATTENTION = SAFETY = */
+/** @name 
+ * ### __SECURITY SETTINGS__
+ * IMPORTANT SECURITY SETTINGS
+ * @{
+ */
+//#define SAFETY_USE (0)
+#define SAFETY_MAX_SIDEWAYS_M (0.21) ///< Maximum permissible sideways movement, in meters
+#define SAFETY_MAX_ROTATION_ANGLE_RAD (0.309) ///< Maximum permissible rotation angle (18 degrees), in radians
+#define SAFETY_MAX_MARKER_MISSES (40.f / 100.f) ///< Maximum permissible percentage of marker misses
+#define SAFETY_COUNT_ITERATION_TO_CALC_MISSES (3) ///< Number of iterations to calculate the percentage of marker misses
+#define SAFETY_MISS_RATE_YAW_GRAD (8.f / DEGRES_IN_RAD ) ///< 
+#define SAFETY_TIME_TO_CALC_SETPOINT_SEC (20) ///< 
+#define SAFETY_MIN_PERCENTAGE_FRAMES_TO_CALC_SETPOINT (67.f / 100.f) ///< Minimal permissible percentage of frames for setpoint calculation
+#define SAFETY_MAX_COUNT_ITERATION_NO_COMMUNICATION_WCU (3) ///< Maximum permissible number ofiteration of no communication with the WCU
+/// @}
+
 
 constexpr double PI = 3.141592653589793;
 constexpr double DEGRES_IN_RAD = 180 / PI;
@@ -41,7 +58,7 @@ const size_t COUNT_FRAMES_TO_CALC_TARGET = 50;
 const size_t COUNT__OF_DATA_PACKET_SENDS = 7;
 
 const size_t COUNT_MEASUREMENT_FOR_MOVING_AVG = 3;
-constexpr float MISS_RATE_YAW_GRAD = /*400.999999999; /*/ 6.999999999;
+constexpr float MISS_RATE_YAW_GRAD = /*400.999999999; /*/ 7.999999999;
 constexpr float MISS_RATE_YAW_RAD = MISS_RATE_YAW_GRAD / DEGRES_IN_RAD;
 constexpr float MISS_RATE_X_METER = /*100; /*/ 0.2;
 constexpr float MISS_RATE_Z_METER = /*100;          /*/ 0.3;
