@@ -830,7 +830,7 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
       count++;
       fSum = fSum + v;
     }
-  if (count > 0)
+  if (count > COUNT_FRAMES_TO_CALC_TARGET * SAFETY_MIN_PERCENTAGE_FRAMES_TO_CALC_SETPOINT)
     fYaw = fSum / count;
   else
     isRetSuccess = false;
@@ -849,7 +849,7 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
       count++;
       fSum = fSum + v;
     }
-  if (count > 0)
+  if (count > COUNT_FRAMES_TO_CALC_TARGET * SAFETY_MIN_PERCENTAGE_FRAMES_TO_CALC_SETPOINT)
     fX = fSum / count;
   else
     isRetSuccess = false;
@@ -868,7 +868,7 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
       count++;
       fSum = fSum + v;
     }
-  if (count > 0)
+  if (count > COUNT_FRAMES_TO_CALC_TARGET * SAFETY_MIN_PERCENTAGE_FRAMES_TO_CALC_SETPOINT)
     fZ = fSum / count;
   else
     isRetSuccess = false;
