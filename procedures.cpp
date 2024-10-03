@@ -108,6 +108,15 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
     std::cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;    
     std::cout << sError << endl;
     prvAlertWCU(ID_PACKET_IN_WCU_IMPOSSIBLE_CALC_SETPOINT);
+  case TEnumRiscBehavior::RISK_ALERT_SIDEWAYS:
+    std::cout << sError << endl;
+    prvAlertWCU(ID_PACKET_IN_WCU_SIDEWAYS_DRIFT_EXCEEDED_PERMISSIBLE);
+  case TEnumRiscBehavior::RISK_ALERT_ROTATION_ANGLE:
+    std::cout << sError << endl;
+    prvAlertWCU(ID_PACKET_IN_WCU_ROTATION_ANGLE_EXCEEDED_PERMISSIBLE);
+  case TEnumRiscBehavior::RISK_ALERT_MARKER_NOT_IDENTIFIED:
+    std::cout << sError << endl;
+    prvAlertWCU(ID_PACKET_IN_WCU_MARKER_IS_GONE);
   default:
     std::cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
     break;

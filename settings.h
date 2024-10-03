@@ -22,7 +22,8 @@
  */
 //#define SAFETY_USE (0)
 #define SAFETY_MAX_SIDEWAYS_M (0.21) ///< Maximum permissible sideways movement, in meters
-#define SAFETY_MAX_ROTATION_ANGLE_RAD (0.309) ///< Maximum permissible rotation angle (18 degrees), in radians
+#define SAFETY_MAX_ROTATION_ANGLE_RAD (18.f / DEGRES_IN_RAD) ///< Maximum permissible rotation angle (18 degrees), in radians
+#define SAFETY_COUNT_ITERATION_MARKER_NOT_IDENTIFIED (2) ///< Number of iterations when the marker is not identified, at which the Alert
 #define SAFETY_MAX_MARKER_MISSES (40.f / 100.f) ///< Maximum permissible percentage of marker misses
 #define SAFETY_COUNT_ITERATION_TO_CALC_MISSES (3) ///< Number of iterations to calculate the percentage of marker misses
 #define SAFETY_MISS_RATE_YAW_GRAD (8.f / DEGRES_IN_RAD ) ///< 

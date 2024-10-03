@@ -91,6 +91,7 @@ int main(int argc, char *argv[])
   Mat xFrameCommon, xFrameTemp; // Captured frames
   float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE);
   float fCorrelatedAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
+  static size_t nMarkerNotIdentifiedRow__(0);
 
   vInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
 
@@ -135,12 +136,12 @@ int main(int argc, char *argv[])
     //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     if (isFirstRunAfterReset_ == true)
     {
-      double yaw(0.f), x(0.f), z(0.f), distance(0.f);
-
-      isResetWas_ = true;
-      isFirstRunAfterReset_ = false;
+      double yaw(0.f), x(0.f), z(0.f), distance(0.f);      
       auto xTimeStart = std::chrono::steady_clock::now();
       auto xTimeEnd = std::chrono::steady_clock::now();
+
+      isResetWas_ = true;
+      isFirstRunAfterReset_ = false;      
       // Frames capture
       while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW) &&
              (xYawsToCalcTarget_.size() < COUNT_FRAMES_TO_CALC_TARGET) && 
@@ -155,7 +156,7 @@ int main(int argc, char *argv[])
           {
             xYawsToCalcTarget_.push_back(yaw);
             xX_ToCalcTarget_.push_back(x);
-            xZ_ToCalcTarget_.push_back(z);
+            xZ_ToCalcTarget_.push_back(z);            
           }
           else
           {
@@ -291,12 +292,19 @@ int main(int argc, char *argv[])
         (fMovingAvgYaw_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fMovingAvgX_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
         (fMovingAvgZ_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
+      nMarkerNotIdentifiedRow__++;
       fAvgYaw = fMovingAvgYaw_;
       fAvgX = fMovingAvgX_;
       fCorrelatedAvgX = fMovingCorrelatedAvgX_;
       fAvgZ = fMovingAvgZ_;
       std::cout << "Failed measurement" << endl;
+    } else {
+      nMarkerNotIdentifiedRow__ = 0;
     }
+
+    // Safety check (marker not identified)
+    if (nMarkerNotIdentifiedRow__ >= SAFETY_COUNT_ITERATION_MARKER_NOT_IDENTIFIED * 2)
+     vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_MARKER_NOT_IDENTIFIED, " ! ! ! Marker is not identified ! ! ! ");
 
     // Caluclation of moving average at the far point and sending a packet of trajectory correction coefficients to the WCU
     // At the closest point we only memorize the arithmetic mean value
@@ -346,6 +354,7 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
   float fCorrelatedX(fMovingCorrelatedX);
   static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
   static bool isFirst_(true);
+  static size_t nBadlyCalc_(0);
 
   /***/ float fPrevYawTemp(0.f);
   /***/ bool isFirst(true);
@@ -668,6 +677,13 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
         ssCoefShift = -1;
     }
 
+    // SAFETY CHECK PERMISSIBLE
+    if (fabsf(fMovingCorrelatedAvgX - xTarget_.fX) > SAFETY_MAX_SIDEWAYS_M)
+      vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_SIDEWAYS, " ! ! ! Sideways drift has been exceeded ! ! ! ");
+    if (fabsf(fMovingAvgYaw - xTarget_.fYaw) > SAFETY_MAX_ROTATION_ANGLE_RAD)
+      vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_ROTATION_ANGLE, " ! ! ! Permissible angle of rotation exceeded ! ! ! ");  
+
+
     // The moving average Z is recalculated
     if (ssCoefShift != 0)
     {
@@ -676,7 +692,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     }
 
     /***/ float temp(0.f), temp1(0.f);
-    this_thread::sleep_for(1500ms);
+    this_thread::sleep_for(1500ms); /// @todo Reduce the delay if there are no SPI errors
     for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
     {
       if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, OUT fPeriod_, OUT fAmplitude_) == false)
