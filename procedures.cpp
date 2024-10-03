@@ -117,6 +117,9 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
   case TEnumRiscBehavior::RISK_ALERT_MARKER_NOT_IDENTIFIED:
     std::cout << sError << endl;
     prvAlertWCU(ID_PACKET_IN_WCU_MARKER_IS_GONE);
+  case TEnumRiscBehavior::RISK_ALERT_MORE_MISSES:
+    std::cout << sError << endl;
+    prvAlertWCU(ID_PACKET_IN_WCU_MANY_MISSES); 
   default:
     std::cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
     break;

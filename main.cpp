@@ -91,7 +91,6 @@ int main(int argc, char *argv[])
   Mat xFrameCommon, xFrameTemp; // Captured frames
   float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE);
   float fCorrelatedAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
-  static size_t nMarkerNotIdentifiedRow__(0);
 
   vInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
 
@@ -292,19 +291,12 @@ int main(int argc, char *argv[])
         (fMovingAvgYaw_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fMovingAvgX_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
         (fMovingAvgZ_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
-      nMarkerNotIdentifiedRow__++;
       fAvgYaw = fMovingAvgYaw_;
       fAvgX = fMovingAvgX_;
       fCorrelatedAvgX = fMovingCorrelatedAvgX_;
       fAvgZ = fMovingAvgZ_;
       std::cout << "Failed measurement" << endl;
-    } else {
-      nMarkerNotIdentifiedRow__ = 0;
-    }
-
-    // Safety check (marker not identified)
-    if (nMarkerNotIdentifiedRow__ >= SAFETY_COUNT_ITERATION_MARKER_NOT_IDENTIFIED * 2)
-     vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_MARKER_NOT_IDENTIFIED, " ! ! ! Marker is not identified ! ! ! ");
+    } 
 
     // Caluclation of moving average at the far point and sending a packet of trajectory correction coefficients to the WCU
     // At the closest point we only memorize the arithmetic mean value
@@ -350,11 +342,14 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
   size_t nMarkers(0);                                                                                                    // Number of found markers (must be 1)
   double yaw(0), roll(0), pitch(0);
   float fSumYaw(0.f), fSumX(0.f), fSumCorrelatedX(0.f), fSumZ(0.f);
-  uint32_t ulYawNo(0), ulX_No(0), ulCorrelatedX_No(0), ulZ_No(0);
+  float fYawOkNo(0.f), fX_OkNo(0.f), fCorrelatedX_OkNo(0.f), fZ_OkNo(0.f);
+  float fYawBadNo(0.f), fX_BadNo(0.f), fCorrelatedX_BadNo(0.f), fZ_BadNo(0.f);
   float fCorrelatedX(fMovingCorrelatedX);
+  bool isMarkerIdentified(false);
   static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
   static bool isFirst_(true);
-  static size_t nBadlyCalc_(0);
+  static size_t nNotIdentifiedRow(0);
+  static size_t nMissesRow__(0);
 
   /***/ float fPrevYawTemp(0.f);
   /***/ bool isFirst(true);
@@ -378,9 +373,12 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     vector<Vec3d> rvecs(nMarkers), tvecs(nMarkers);
 
     if (xIdDetectMarker.empty() == false)
+    {
+      isMarkerIdentified = true;
       solvePnP(xMarkerPoints, xCornersMarker.at(0), xCameraMatrix, xDistCoefficients, rvecs.at(0), tvecs.at(0), false);
-    else
+    } else {
       continue;
+    }
 
     // Quaternion calculation
     double r[] = {rvecs.at(0)[0], rvecs.at(0)[1], rvecs.at(0)[2]};
@@ -395,14 +393,15 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     vGetYawRollPitch(quat[0], quat[1], quat[2], quat[3], OUT yaw, OUT roll, OUT pitch);
 
     // Yaw sum calculation
-    if (((fabsf(static_cast<float>(yaw) - fMovingYaw) < MISS_RATE_YAW_RAD) && (fabsf(fMovingYaw) < 3.f * PI)) ||
+    if (((fabsf(static_cast<float>(yaw) - fMovingYaw) < SAFETY_MISS_RATE_YAW_RAD) && (fabsf(fMovingYaw) < 3.f * PI)) ||
         (fabsf(fMovingYaw > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)))
     {
       fSumYaw = fSumYaw + yaw;
-      ulYawNo++;
+      fYawOkNo++;
     }
     else
     {
+      fYawBadNo++;
 #ifdef DEBUG_SOFT
       std::cout << "Missed yaw is " << yaw * DEGRES_IN_RAD << endl;
 #endif
@@ -414,8 +413,8 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
         (fabsf(fMovingX) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
       fSumX = fSumX + tvecs.at(0)[0];
-      ulX_No++;
-    }
+      fX_OkNo++;
+    }   
 
     // Correlated X sum calculation
     fCorrelatedX = static_cast<float>(tvecs.at(0)[0]);
@@ -435,10 +434,11 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
         (fabsf(fMovingCorrelatedX) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
       fSumCorrelatedX = fSumCorrelatedX + fCorrelatedX;
-      ulCorrelatedX_No++;
+      fCorrelatedX_OkNo++;
     }
     else
     {
+      fCorrelatedX_BadNo++;
 #ifdef DEBUG_SOFT
       std::cout << "Missed X is " << tvecs.at(0)[0] << " , correlated X is " << fCorrelatedX << endl;
 #endif
@@ -450,10 +450,11 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
         (fabsf(fMovingZ) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
       fSumZ = fSumZ + tvecs.at(0)[2];
-      ulZ_No++;
+      fZ_OkNo++;
     }
     else
     {
+      fZ_BadNo++;
 #ifdef DEBUG_SOFT
       if (eStatePosition_ == TEnumStatePosition::STATE_FORWARD)
         std::cout << "Missed Z is " << tvecs.at(0)[2] << endl;
@@ -466,18 +467,43 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
 #endif
   }
 
-  // Averaging
-  if ((ulYawNo != 0) && (ulX_No != 0)/* && (ulZ_No != 0)*/)
+
+  // SAFETY CHECK: Marker not identified
+  if (isMarkerIdentified == false)
   {
-    fAvgYaw = fSumYaw / static_cast<float>(ulYawNo);
-    fAvgX = fSumX / static_cast<float>(ulX_No);
-    fCorrelatedAvgX = fSumCorrelatedX / static_cast<float>(ulCorrelatedX_No);
+    nNotIdentifiedRow++;
+  } else {
+    nNotIdentifiedRow = 0;
+  }
+  if (nNotIdentifiedRow >= SAFETY_COUNT_ITERATION_MARKER_NOT_IDENTIFIED * 2)
+    vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_MARKER_NOT_IDENTIFIED, " ! ! ! Marker not identified ! ! ! ");
+
+  // SAFETY CHECK: More misses in a row
+  if ((((fYawBadNo / (fYawOkNo + fYawBadNo)) > SAFETY_MAX_MARKER_MISSES) ||
+       ((fCorrelatedX_BadNo / (fCorrelatedX_OkNo + fCorrelatedX_BadNo)) > SAFETY_MAX_MARKER_MISSES) ||
+       ((fZ_BadNo / (fZ_OkNo + fZ_BadNo)) > SAFETY_MAX_MARKER_MISSES)) &&
+       (eStatePosition_ == TEnumStatePosition::STATE_FORWARD))
+  {
+    nMissesRow__++;
+  } else {
+    if (eStatePosition_ == TEnumStatePosition::STATE_FORWARD)
+      nMissesRow__ = 0;
+  }
+  if (nMissesRow__ >= SAFETY_COUNT_ITERATION_TO_CALC_MISSES)
+    vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_MORE_MISSES, " ! ! ! More misses in a row ! ! ! ");
+
+  // Averaging
+  if ((fYawOkNo != 0) && (fX_OkNo != 0)/* && (fZ_OkNo != 0)*/)
+  {
+    fAvgYaw = fSumYaw / static_cast<float>(fYawOkNo);
+    fAvgX = fSumX / static_cast<float>(fX_OkNo);
+    fCorrelatedAvgX = fSumCorrelatedX / static_cast<float>(fCorrelatedX_OkNo);
     fAvgZ = fMovingZ;
   }
   else
     ret = false;
-  if ((eStatePosition_ == TEnumStatePosition::STATE_FORWARD) && (ulZ_No != 0))
-    fAvgZ = fSumZ / static_cast<float>(ulZ_No);
+  if ((eStatePosition_ == TEnumStatePosition::STATE_FORWARD) && (fZ_OkNo != 0))
+    fAvgZ = fSumZ / static_cast<float>(fZ_OkNo);
   else
   {
     if ((eStatePosition_ == TEnumStatePosition::STATE_FORWARD))
@@ -792,7 +818,7 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   bool isRetSuccess(true);
   constexpr float SEARCH_RANGE_START_YAW = -10.f / DEGRES_IN_RAD;
   constexpr float SEARCH_RANGE_YAW = 20.f / DEGRES_IN_RAD;
-  constexpr float SEARCH_WINDOW_WIDTH_YAW = MISS_RATE_YAW_RAD > (15.f / DEGRES_IN_RAD) ? (7.f / DEGRES_IN_RAD) : MISS_RATE_YAW_RAD;
+  constexpr float SEARCH_WINDOW_WIDTH_YAW = SAFETY_MISS_RATE_YAW_RAD > (15.f / DEGRES_IN_RAD) ? (7.f / DEGRES_IN_RAD) : SAFETY_MISS_RATE_YAW_RAD;
   constexpr float SEARCH_STEP_YAW = 2.f / DEGRES_IN_RAD;
   const float SEARCH_RANGE_START_X = -0.5;
   const float SEARCH_RANGE_X = 1.f;
@@ -841,7 +867,7 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   float fSum(0.f);
   count = 0;
   for (auto &v : xYawToCalc)
-    if ((v > (medianValue - MISS_RATE_YAW_RAD)) && (v < (medianValue + MISS_RATE_YAW_RAD)))
+    if ((v > (medianValue - SAFETY_MISS_RATE_YAW_RAD)) && (v < (medianValue + SAFETY_MISS_RATE_YAW_RAD)))
     {
       count++;
       fSum = fSum + v;
