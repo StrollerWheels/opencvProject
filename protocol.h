@@ -70,7 +70,7 @@
 /// Максимальный размер валидного пакета
 #define MAX_SIZE_ARUCO_PACKET (sizeof(TProtocolInScuMotionCmd))
 /** @name
- * ### Packet preambules 
+ * ### Packet preambules
  * @{
  */
 #define PREAMBULE_IN_WCU (0x5555)
@@ -87,6 +87,7 @@
 #define ID_PACKET_IN_WCU_MARKER_IS_GONE (0x84) ///<
 #define ID_PACKET_IN_WCU_MANY_MISSES (0x85) ///<
 #define ID_PACKET_IN_WCU_CAMERA_PROBLEM (0x86) ///<
+#define ID_PACKET_IN_WCU_NO_PACKET_FROM_WCU (0x87)
 #define ID_PACKET_IN_OU_CONDITION (0x11) ///<
 #else
 typedef enum
@@ -98,6 +99,7 @@ typedef enum
   ID_PACKET_IN_WCU_MARKER_IS_GONE = 0x84, ///<
   ID_PACKET_IN_WCU_MANY_MISSES = 0x85, ///<
   ID_PACKET_IN_WCU_CAMERA_PROBLEM = 0x86, ///<
+	ID_PACKET_IN_WCU_NO_PACKET_FROM_WCU = 0x87, ///<
   ID_PACKET_IN_OU_CONDITION = 0x11, ///<
 }TEnumeIdPAcketAruco;
 #endif

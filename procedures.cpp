@@ -120,6 +120,9 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
   case TEnumRiscBehavior::RISK_ALERT_MORE_MISSES:
     std::cout << sError << endl;
     prvAlertWCU(ID_PACKET_IN_WCU_MANY_MISSES); 
+  case TEnumRiscBehavior::RISK_ALERT_NO_PACKET_FROM_WCU:
+    std::cout << sError << endl;
+    prvAlertWCU(ID_PACKET_IN_WCU_NO_PACKET_FROM_WCU); 
   default:
     std::cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
     break;
@@ -295,6 +298,7 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   string sError;
   static TProtocolInScuMotionCmd xPacketOut_;
   TProtocolInOuCondition *pxPacketIn = reinterpret_cast<TProtocolInOuCondition *>(&xPacketOut_);
+  static size_t nErrorPacketRow__(0);
 
   xPacketOut_.usPreambule = PREAMBULE_IN_WCU;
   xPacketOut_.eIdPacketAruco = ucId;
@@ -314,12 +318,20 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
     /***/ static size_t err = 0;
     ret = false;
     std::cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
+    if (ucId == ID_PACKET_IN_WCU_MOTION_CMD)
+      nErrorPacketRow__++;
   }
   else
-  {
+  {    
     fPeriod = pxPacketIn->fPeriod;
     fAmplitude = pxPacketIn->fAmplitude;
+    if (ucId == ID_PACKET_IN_WCU_MOTION_CMD)
+      nErrorPacketRow__ = 0;
   }
+
+  // SAFETY CHECK: Bad connection
+  if ((nErrorPacketRow__ >= COUNT__OF_DATA_PACKET_SENDS * SAFETY_MAX_COUNT_ITERATION_NO_COMMUNICATION_WCU) && (ucId == ID_PACKET_IN_WCU_MOTION_CMD))
+    vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_NO_PACKET_FROM_WCU, " ! ! ! Bad connection with WCU ! ! ! ");
 
   return ret;
 }
