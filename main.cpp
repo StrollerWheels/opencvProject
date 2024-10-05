@@ -194,9 +194,10 @@ int main(int argc, char *argv[])
       // Sending three identical pacckets because there are often transmission errors
       float fTemp(0.f), fTemp1(0.f), fTemp2(0.f), fTemp3(0.f);
       int16_t ssTemp(0);
+      float fDistance = sqrt(pow(fMovingAvgX_, 2.f) + pow(fMovingAvgZ_, 2.f));
       for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
       {
-        if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fTemp, fTemp1, ssTemp, OUT fTemp2, OUT fTemp3) == true)
+        if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fTemp, fTemp1, ssTemp, fDistance, OUT fTemp2, OUT fTemp3) == true)
           asm("NOP");
         this_thread::sleep_for(5ms);
       }
@@ -692,11 +693,12 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
       nMeasurement++;
 
     // if moving averages are calculated, then calculation of trajectory adjustment coefficients
+    float fDistance(0.f);
     if ((fabsf(fMovingAvgYaw) > FLOAT_EPSILON) && (fabsf(fMovingCorrelatedAvgX) > FLOAT_EPSILON) && (fabsf(fMovingAvgZ) > FLOAT_EPSILON) &&
         (fabsf(fMovingAvgYaw) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fMovingCorrelatedAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
         (fabsf(fMovingAvgZ) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
-      float fDistance = sqrt(pow(fMovingCorrelatedAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
+      fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
       prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingCorrelatedAvgX, fDistance, xTarget_.fYaw, xTarget_.fX, xTarget_.fZ, xTarget_.fDistance,
                                         OUT fCoefRotation, OUT fCoefTranslation, OUT ssCoefShift, fPeriod_, fAmplitude_);
       if (((1.5 * fMovingCorrelatedAvgX) > fMovingAvgZ) && (fMovingCorrelatedAvgX < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
@@ -721,7 +723,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     this_thread::sleep_for(1500ms); /// @todo Reduce the delay if there are no SPI errors
     for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
     {
-      if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, OUT fPeriod_, OUT fAmplitude_) == false)
+      if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, fDistance, OUT fPeriod_, OUT fAmplitude_) == false)
         asm("NOP");
       this_thread::sleep_for(5ms);
     }

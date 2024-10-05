@@ -125,6 +125,7 @@ typedef struct
    * shiftValue = ssShift * (0.1 * Amplitude)
    * @endcode */
   int16_t ssShift; ///< Shift the skating path; >0 - forward, <0 - back
+  float fDistance; ///< Marker distance, in meters
   uint16_t crc16; ///< Контрольная сумма, см. @ref crc16.c
 }TProtocolInScuMotionCmd;
 #pragma pack(pop)
@@ -144,6 +145,7 @@ typedef struct
   float fPeriod; ///< Period, in seconds;
   float fAmplitude; ///< Amplitude, in meters
   uint16_t nHallError; ///< Count of Hall errors
+  float fReserve; ///< Reserve field
   uint16_t crc16; ///< Контрольная сумма, см. @ref crc16.c
 }TProtocolInOuCondition;
 #pragma pack(pop)

@@ -291,7 +291,7 @@ void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingCorr
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 // = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, OUT float &fPeriod, OUT float &fAmplitude)
+bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, float fDistance, OUT float &fPeriod, OUT float &fAmplitude)
 {
   bool ret(true);
   int res(0);
@@ -305,6 +305,7 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   xPacketOut_.fRotation = fCoefRotation;
   xPacketOut_.fTranslation = fCoefTranslation;
   xPacketOut_.ssShift = ssShift;
+  xPacketOut_.fDistance = fDistance;
   xPacketOut_.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_) - 2);
 
   errno = 0;
@@ -354,12 +355,12 @@ bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, O
 
 void prvAlertWCU(uint8_t ucEventId)
 {
-  float fTempIn1(0.f), fTempIn2(0.f), fTempOut1(0.f), fTempOut2(0.f);
+  float fTempIn1(0.f), fTempIn2(0.f), fTempIn3(0.f), fTempOut1(0.f), fTempOut2(0.f);
   int16_t ssTempIn(0.f);
 
   for ( ; ; )
   {
-    bSendPacketToStroller(ucEventId, fTempIn1, fTempIn2, ssTempIn, OUT fTempOut1, OUT fTempOut2);    
+    bSendPacketToStroller(ucEventId, fTempIn1, fTempIn2, ssTempIn, fTempIn3, OUT fTempOut1, OUT fTempOut2);    
     this_thread::sleep_for(2000ms);
   }
 }
