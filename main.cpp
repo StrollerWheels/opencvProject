@@ -25,7 +25,6 @@
 
 #include "settings.h"
 #include "crc.h"
-#include "protocol.h"
 #include "procedures.h"
 
 // 3 - All_save_in_file
@@ -193,11 +192,18 @@ int main(int argc, char *argv[])
 
       // Sending three identical pacckets because there are often transmission errors
       float fTemp(0.f), fTemp1(0.f), fTemp2(0.f), fTemp3(0.f);
-      int16_t ssTemp(0);
+      int16_t ssCoefShift(0);
       float fDistance = sqrt(pow(fMovingAvgX_, 2.f) + pow(fMovingAvgZ_, 2.f));
+      // Calculation shift coefficient
+      if (fDistance < MINIMAL_DISTANCE_VALUE_METER) /***/
+        ssCoefShift = (-1);
+      if (fDistance < MINIMAL_DISTANCE_VALUE_METER_TWO_SHIFT) /***/
+        ssCoefShift = (-2);  
+      if (fDistance > MAX_RECOMMENDED_DISTANCE_METER)
+        ssCoefShift = 1;      
       for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
       {
-        if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fTemp, fTemp1, ssTemp, fDistance, OUT fTemp2, OUT fTemp3) == true)
+        if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fTemp, fTemp1, ssCoefShift, fDistance, OUT fTemp2, OUT fTemp3) == true)
           asm("NOP");
         this_thread::sleep_for(5ms);
       }

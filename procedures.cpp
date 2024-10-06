@@ -22,7 +22,6 @@
 
 #include "procedures.h"
 #include "settings.h"
-#include "protocol.h"
 #include "crc.h"
 
 using namespace std;

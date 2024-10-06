@@ -14,6 +14,8 @@
 #ifndef SETTINGS_H_
 #define SETTINGS_H_
 
+#include "protocol.h"
+
 /* = SAFETY = ATTENTION = SAFETY = SAFETY = ATTENTION = SAFETY = SAFETY = ATTENTION = SAFETY = SAFETY = ATTENTION = SAFETY = SAFETY = ATTENTION = SAFETY = */
 /** @name 
  * ### __SECURITY SETTINGS__
@@ -66,7 +68,8 @@ constexpr float MISS_RATE_Z_METER = /*100;          /*/ 0.3;
 constexpr float IMPOSSIBLE_YAW_X_Z_VALUE = 100.f; ///< Moving average is initiated by this value, impossible value
 /** Value for conditional branching, just in case because of the specifics of storing float in memory */
 constexpr float IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT = (IMPOSSIBLE_YAW_X_Z_VALUE - FLOAT_EPSILON); ///< Moving average is initiated by this value
-const float TARGET_DISTANCE_VALUE_METER = 0.65; /// @note Zoom in. when the camera will replace
+const float TARGET_DISTANCE_VALUE_METER = TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS; /// @note Zoom in. when the camera will replace
+const float MAX_RECOMMENDED_DISTANCE_METER = TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS + 0.25;
 const float MINIMAL_DISTANCE_VALUE_METER = 0.61; /// @note Zoom in. when the camera will replace
 const float MINIMAL_DISTANCE_VALUE_METER_TWO_SHIFT = 0.55; /// @note Zoom in. when the camera will replace
 
