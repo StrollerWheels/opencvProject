@@ -29,10 +29,13 @@ using namespace cv;
 
 extern cv::Mat xMarkerPoints;
 extern Mat xCameraMatrix, xDistCoefficients; ///< Camera calibration settings
+extern VideoCapture xCaptureFrame;            ///< Object to capture a frame
 
-static bool prvReadCameraParameters(std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients);
+static bool prvReadCameraParameters (std::string filename, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients);
 
-static void prvAlertWCU(uint8_t ucEvent);
+static void prvAlertWCU (uint8_t ucEvent);
+
+static void *prvCheckShutdown (void *args);
 
 /**
  * @brief Initialization function
@@ -40,18 +43,25 @@ static void prvAlertWCU(uint8_t ucEvent);
 void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatrix, OUT cv::Mat &xDistCoefficients,
                            OUT cv::VideoCapture &xCaptureFrame, OUT cv::Mat &xMarkerPoints)
 {
+  pthread_t xThreadCheckPinShutdown;
+
   wiringPiSetup();
   pinMode(NO_PIN_FORWARD, INPUT);
-  pinMode(NO_PIN_BACK, INPUT);
+  pinMode(NO_PIN_BACK, INPUT);  
+
+  pthread_create (&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
+  pthread_detach(xThreadCheckPinShutdown);
 
   errno = 0;
   if (wiringPiSPISetupMode(SPI_CHANNEL, SPI_PORT, SPI_BAUDRATE, SPI_MODE) < 0)
     vRiscBehavior(TEnumRiscBehavior::RISC_NOT_SETUP_SPI, strerror(errno));
 
+#if DEBUG_ON > 0
   xFileToSave.open("../Angles.ods");
   xFileToSave << "AvgYaw	AvgX AvgZ MovingAvgYaw" << endl;
+#endif  
 
-  if (prvReadCameraParameters("../Calibr_1920x1080.xml", xCameraMatrix, xDistCoefficients) == false)
+  if (prvReadCameraParameters("/home/Calibr_1920x1080.xml", xCameraMatrix, xDistCoefficients) == false)
     vRiscBehavior(TEnumRiscBehavior::RISC_INVALID_CAMERA_FILE, "The settings file cannot be opened");
 
   // Open camera
@@ -60,7 +70,11 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   {
     xCaptureFrame.open(CAMERA_NUMBER, cv::CAP_V4L2);
     if (xCaptureFrame.isOpened() == false)    
-      std::cout << "Cannot open camera" << endl;            
+      #if DEBUG_ON == 1  
+      cout << "Cannot open camera" << endl;
+      #else
+      asm("NOP");
+      #endif
     this_thread::sleep_for(100ms);
   } while ((xCaptureFrame.isOpened() == false) && (nAttemptOpen-- > 2));
   if (nAttemptOpen < 3)
@@ -73,7 +87,9 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   double dWidth = xCaptureFrame.get(cv::CAP_PROP_FRAME_WIDTH);   // get the width of frames of the video
   double dHeight = xCaptureFrame.get(cv::CAP_PROP_FRAME_HEIGHT); // get the height of frames of the video
   double dFps = xCaptureFrame.get(cv::CAP_PROP_FPS);
-  std::cout << "camera width = " << dWidth << ", height = " << dHeight << ", FPS = " << dFps << endl;
+  #if DEBUG_ON == 1  
+  cout << "camera width = " <<  std::to_string(dWidth) << ", height = " << std::to_string(dHeight) << ", FPS = " << std::to_string(dFps) << endl;
+  #endif
 
   // Set coordinate system
   xMarkerPoints.ptr<Vec3f>(0)[0] = Vec3f(-MARKER_LENGTH / 2.f, MARKER_LENGTH / 2.f, 0);
@@ -90,44 +106,75 @@ void vRiscBehavior(TEnumRiscBehavior eErrorCode, string sError)
   switch (eErrorCode)
   {
   case TEnumRiscBehavior::RISC_WRONG_INPUT_COMBINATION:
-    std::cout << " ! ! ! Wrong input combination ! ! ! " << endl;
+    #if DEBUG_ON == 1  
+    cout << " ! ! ! Wrong input combination ! ! ! " << endl;
+    #endif
     /***/return;
     break;
   case TEnumRiscBehavior::RISC_CAMERA_PROBLEM:
-    std::cout << " ! ! ! Camera problems ! ! ! " << endl;
+    #if DEBUG_ON == 1  
+    cout << " ! ! ! Camera problems ! ! ! " << endl;
+    #endif
     prvAlertWCU(ID_PACKET_IN_WCU_CAMERA_PROBLEM);
     break;
   case TEnumRiscBehavior::RISC_INVALID_CAMERA_FILE:
-    std::cout << " ! ! ! Invalid camera file ! ! ! " << endl;
+    #if DEBUG_ON == 1  
+    cout << " ! ! ! Invalid camera file ! ! ! " << endl;
+    #endif
+    prvAlertWCU(ID_PACKET_IN_WCU_CAMERA_PROBLEM);
   case TEnumRiscBehavior::RISC_NOT_SETUP_SPI:
-    std::cout << " ! ! ! Not setup SPI ! ! ! " << endl;
+    #if DEBUG_ON == 1  
+    cout << " ! ! ! Not setup SPI ! ! ! " << endl;
+    #endif
+    prvAlertWCU(ID_PACKET_IN_WCU_NO_PACKET_FROM_WCU);
   case TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET:
-    std::cout << " ! ! ! PACKET SENDING ERROR ! ! ! " << endl;
+    #if DEBUG_ON == 1  
+    cout << " ! ! ! PACKET SENDING ERROR ! ! ! " << endl;
+    #endif
+    break;
   case TEnumRiscBehavior::RISC_CANNOT_CALC_TRAGET:
-    std::cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;    
-    std::cout << sError << endl;
+    #if DEBUG_ON == 1  
+    cout << " ! ! ! CANNOT TO CALCULATION THE TARGETS ! ! ! " << endl;
+    #endif
+    #if DEBUG_ON == 1  
+    cout << sError << endl;
+    #endif
     prvAlertWCU(ID_PACKET_IN_WCU_IMPOSSIBLE_CALC_SETPOINT);
   case TEnumRiscBehavior::RISK_ALERT_SIDEWAYS:
-    std::cout << sError << endl;
+    #if DEBUG_ON == 1  
+    cout << sError << endl;
+    #endif
     prvAlertWCU(ID_PACKET_IN_WCU_SIDEWAYS_DRIFT_EXCEEDED_PERMISSIBLE);
   case TEnumRiscBehavior::RISK_ALERT_ROTATION_ANGLE:
-    std::cout << sError << endl;
+    #if DEBUG_ON == 1  
+    cout << sError << endl;
+    #endif
     prvAlertWCU(ID_PACKET_IN_WCU_ROTATION_ANGLE_EXCEEDED_PERMISSIBLE);
   case TEnumRiscBehavior::RISK_ALERT_MARKER_NOT_IDENTIFIED:
-    std::cout << sError << endl;
+    #if DEBUG_ON == 1  
+    cout << sError << endl;
+    #endif
     prvAlertWCU(ID_PACKET_IN_WCU_MARKER_IS_GONE);
   case TEnumRiscBehavior::RISK_ALERT_MORE_MISSES:
-    std::cout << sError << endl;
+    #if DEBUG_ON == 1  
+    cout << sError << endl;
+    #endif
     prvAlertWCU(ID_PACKET_IN_WCU_MANY_MISSES); 
   case TEnumRiscBehavior::RISK_ALERT_NO_PACKET_FROM_WCU:
-    std::cout << sError << endl;
+    #if DEBUG_ON == 1  
+    cout << sError << endl;
+    #endif
     prvAlertWCU(ID_PACKET_IN_WCU_NO_PACKET_FROM_WCU); 
   default:
-    std::cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
+    #if DEBUG_ON == 1  
+    cout << " ! ! ! Uncertain behavior ! ! ! " << endl;
+    #endif
     break;
   }
 
-  std::cout << sError << endl;
+  #if DEBUG_ON == 1  
+  cout << sError << endl;
+  #endif
 
   for (;;)
     asm("NOP");
@@ -150,12 +197,16 @@ bool bCaptureFrame(VideoCapture &xCapture, OUT Mat &frame, size_t nAttempts)
       xCapture.open(CAMERA_NUMBER, cv::CAP_V4L2);
       if (xCapture.isOpened() == false)
       {
-        std::cout << "Cannot open camera" << endl;
+        #if DEBUG_ON == 1  
+        cout << "Cannot open camera" << endl;
+        #endif
         vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
         continue;
       }
 
-      std::cout << "Cannot read a xFrameCommon" << endl;
+      #if DEBUG_ON == 1  
+      cout << "Cannot read a xFrameCommon" << endl;
+      #endif
     } while ((xCapture.read(frame) == false) && (--nAttempts > 0));
   }
 
@@ -196,7 +247,9 @@ bool bTelemetryCalculation(cv::Mat &xFrame, OUT double &yaw, OUT double &x, OUT 
   }
   catch (...)
   {
-    std::cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+    #if DEBUG_ON == 1  
+    cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+    #endif
   }
   /*terminate called after throwing an instance of 'cv::Exception'
   what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
@@ -271,18 +324,22 @@ void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingCorr
 {
   float fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
 
-  std::cout << "Target yaw = " << fTargetYaw << " ( " << (fTargetYaw * DEGRES_IN_RAD) << " degres)" << " ;  target X = " << fTargetX << " ( " << (fTargetX * 100.f) << " cm);" << endl;
-  std::cout << "Moving Yaw = " << fMovingAvgYaw << " ( " << (fMovingAvgYaw * DEGRES_IN_RAD) << " degres);" << endl;
-  std::cout << "Moving X = " << fMovingAvgX << " ( " << (fMovingAvgX * 100.f) << " cm);" << endl;
-  std::cout << "Moving correlated X = " << fMovingCorrelatedAvgX << " ( " << (fMovingCorrelatedAvgX * 100.f) << " cm);" << endl;
-  std::cout << "Moving Z = " << fMovingAvgZ << " ( " << (fMovingAvgZ * 100.f) << " cm);" << endl;
-  std::cout << "Moving distance = " << fDistance << " ( " << (fDistance * 100.f) << " cm);" << endl;
-  std::cout << "Coef rotation = " << fCoefRot << " ; Coef translation = " << fCoefTransl << " ; Coef shift = " << ssCoefShift << endl;
-  std::cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
-
+  #if DEBUG_ON == 1  
+  cout << "Target yaw = " + std::to_string(fTargetYaw) + " ( " + std::to_string((fTargetYaw * DEGRES_IN_RAD)) + " degres)" + 
+          " ;  target X = " + std::to_string(fTargetX) + " ( " + std::to_string((fTargetX * 100.f)) + " cm);" << endl;
+  cout << "Moving Yaw = " + std::to_string(fMovingAvgYaw) + " ( " + std::to_string((fMovingAvgYaw * DEGRES_IN_RAD)) + " degres);" << endl;
+  cout << "Moving X = " + std::to_string(fMovingAvgX) + " ( " + std::to_string((fMovingAvgX * 100.f)) + " cm);" << endl;
+  cout << "Moving correlated X = " + std::to_string(fMovingCorrelatedAvgX) + " ( " + std::to_string((fMovingCorrelatedAvgX * 100.f)) + " cm);" << endl;
+  cout << "Moving Z = " + std::to_string(fMovingAvgZ) + " ( " + std::to_string((fMovingAvgZ * 100.f)) + " cm);" << endl;
+  cout << "Moving distance = " + std::to_string(fDistance) + " ( " + std::to_string((fDistance * 100.f)) + " cm);" << endl;
+  cout << "Coef rotation = " + std::to_string(fCoefRot) + " ; Coef translation = " + std::to_string(fCoefTransl) + " ; Coef shift = " + std::to_string(ssCoefShift) << endl;
+  cout << "=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=	=" << endl;
+  #endif
 //  Saving the position to a file
 #if DEBUG_SOFT < 3
+#if DEBUG_ON > 0
   xFileToSave << std::to_string(fMovingAvgYaw * DEGRES_IN_RAD) + "	" + std::to_string(fMovingAvgX) << endl;
+#endif  
 #endif
 }
 
@@ -317,7 +374,9 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   {
     /***/ static size_t err = 0;
     ret = false;
-    std::cout << " ! ! ! CRC16 error ! ! !  error count is " << ++err << " from " << all << " packets" << endl;
+    #if DEBUG_ON == 1  
+    cout << " ! ! ! CRC16 error ! ! !  error count is " + std::to_string(++err) + " from " + std::to_string(all) + " packets" << endl;
+    #endif
     if (ucId == ID_PACKET_IN_WCU_MOTION_CMD)
       nErrorPacketRow__++;
   }
@@ -362,4 +421,34 @@ void prvAlertWCU(uint8_t ucEventId)
     bSendPacketToStroller(ucEventId, fTempIn1, fTempIn2, ssTempIn, fTempIn3, OUT fTempOut1, OUT fTempOut2);    
     this_thread::sleep_for(2000ms);
   }
+}
+
+
+static void *prvCheckShutdown (void *args)
+{
+  static size_t nConfirmation(0);
+
+  this_thread::sleep_for(5000ms);
+
+  pinMode(NO_PIN_SHUTDOWN, INPUT);
+
+  for ( ; ;)
+  {
+    if (digitalRead(NO_PIN_SHUTDOWN) == HIGH)
+    {
+      nConfirmation++;
+    } else {
+      nConfirmation = 0;
+    }
+    if (nConfirmation > 5)
+    {
+      if (xCaptureFrame.isOpened() == true)
+        xCaptureFrame.release();          
+      std::system("shutdown now");
+    }
+
+    this_thread::sleep_for(750ms);
+  }  
+
+  pthread_exit(0);
 }

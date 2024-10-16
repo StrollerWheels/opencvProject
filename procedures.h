@@ -67,6 +67,8 @@ void vGetYawRollPitch(double q0, double qx, double qy, double qz, OUT double &ya
 void vDebugFunction(float &fMovingAvgYaw, float &fMovingAvgX, float &fMovingCorrelatedAvgX, float &fMovingAvgZ, std::ofstream &xFileToSave,
                     float &fCoefRot, float &fCoefTransl, int16_t ssCoefShift, float fTargetYaw, float fTargetX);
 
+void vMyCout (char *str);
+
 bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTranslation, int16_t ssShift, float fDistance, OUT float &fPeriod, OUT float &fAmplitude);
 
 #endif // PROCEDURES_H_                      

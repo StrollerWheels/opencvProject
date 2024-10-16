@@ -87,6 +87,9 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xCorr
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 int main(int argc, char *argv[])
 {
+  this_thread::sleep_for(5000ms);
+
+  
   Mat xFrameCommon, xFrameTemp; // Captured frames
   float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE);
   float fCorrelatedAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
@@ -236,7 +239,9 @@ int main(int argc, char *argv[])
         if (bCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
           vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
         pxFramesForward_.push(xFrameTemp);
-        std::cout << "Capture closes was" << endl;
+        #if DEBUG_ON == 1  
+        cout << "Capture closes was" << endl;
+        #endif
       }
 
       // Farthest point from the marker
@@ -246,7 +251,9 @@ int main(int argc, char *argv[])
         if (bCaptureFrame(xCaptureFrame, xFrameTemp, 10) == false)
           vRiscBehavior(TEnumRiscBehavior::RISC_CAMERA_PROBLEM, "Unable to capture a frame");
         pxFramesBack_.push(xFrameTemp);
-        std::cout << "Capture farthest was" << endl;
+        #if DEBUG_ON == 1  
+        cout << "Capture farthest was" << endl;
+        #endif
       }
 
       // Point defenition
@@ -288,9 +295,15 @@ int main(int argc, char *argv[])
     // * * * END OF TELEMETRY COLLECTION AT THE EXTREMES * * *
     //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
-    std::cout << "Count of frames = " + std::to_string(pxFramesToCalc_.size()) << endl;
+    #if DEBUG_ON == 1  
+    cout << "Count of frames = " << std::to_string(pxFramesToCalc_.size())  << endl;
+    #endif
     if (eStatePosition_ == TEnumStatePosition::STATE_FORWARD)
-      std::cout << "= = = = = = =" << endl;
+      #if DEBUG_ON == 1  
+      cout << "= = = = = = =" << endl;
+      #else
+      asm("NOP");
+      #endif
 
     // Calculation of the arithmetic mean ratation angle (Yaw), X and Z of measurement at one far or closest point
     if ((prvYawTranslationCalculation(eStatePosition_, pxFramesToCalc_, xMarkerPoints, xCameraMatrix, xDistCoefficients, OUT fAvgYaw, OUT fAvgX, OUT fCorrelatedAvgX,
@@ -302,7 +315,9 @@ int main(int argc, char *argv[])
       fAvgX = fMovingAvgX_;
       fCorrelatedAvgX = fMovingCorrelatedAvgX_;
       fAvgZ = fMovingAvgZ_;
-      std::cout << "Failed measurement" << endl;
+      #if DEBUG_ON == 1  
+      cout << "Failed measurement" << endl;
+      #endif
     } 
 
     // Caluclation of moving average at the far point and sending a packet of trajectory correction coefficients to the WCU
@@ -371,7 +386,9 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     }
     catch (...)
     {
-      std::cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+      #if DEBUG_ON == 1  
+      cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+      #endif
     }
     /*terminate called after throwing an instance of 'cv::Exception'
     what():  OpenCV(4.9.0-dev) /home/orangepi/opencv-4.x/modules/objdetect/src/aruco/aruco_detector.cpp:872: error: (-215:Assertion failed) !_image.empty() in function 'detectMarkers'*/
@@ -410,7 +427,9 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     {
       fYawBadNo++;
 #ifdef DEBUG_SOFT
-      std::cout << "Missed yaw is " << yaw * DEGRES_IN_RAD << endl;
+      #if DEBUG_ON == 1  
+      cout << "Missed yaw is " << std::to_string(yaw * DEGRES_IN_RAD) << endl;
+      #endif
 #endif
     }
 
@@ -447,7 +466,9 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     {
       fCorrelatedX_BadNo++;
 #ifdef DEBUG_SOFT
-      std::cout << "Missed X is " << tvecs.at(0)[0] << " , correlated X is " << fCorrelatedX << endl;
+      #if DEBUG_ON == 1  
+      cout << "Missed X is " << std::to_string(tvecs.at(0)[0]) << " , correlated X is " << std::to_string(fCorrelatedX) << endl;
+      #endif
 #endif
     }
 
@@ -464,13 +485,19 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
       fZ_BadNo++;
 #ifdef DEBUG_SOFT
       if (eStatePosition_ == TEnumStatePosition::STATE_FORWARD)
-        std::cout << "Missed Z is " << tvecs.at(0)[2] << endl;
+        #if DEBUG_ON == 1  
+        cout << "Missed Z is " << std::to_string(tvecs.at(0)[2]) << endl;
+        #else
+        asm("NOP");
+        #endif
 #endif
     }
 
 #if DEBUG_SOFT > 2
+#if DEBUG_ON > 0
     xFileToSave << std::to_string(yaw * DEGRES_IN_RAD) + "	" << fCorrelatedX << +" "
                 << std::to_string(tvecs.at(0)[2]) << +" " + std::to_string(fMovingYaw * DEGRES_IN_RAD) << endl;
+#endif
 #endif
   }
 
@@ -801,12 +828,16 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fCorrelatedX, 
 
   if (fabsf(fCoefRotation) > 0.7)
   {
-    std::cout << "!!! Rotation coefficient more than 50 per cent !!!" << endl;
+    #if DEBUG_ON == 1  
+    cout << "!!! Rotation coefficient more than 50 per cent !!!" << endl;
+    #endif
     fCoefRotation = fCoefRotation > 0.f ? 0.7 : -0.7;
   }
   if (fabsf(fCoefTranslation) > 0.7)
   {
-    std::cout << "!!! Translation coefficient more than 50 per cent !!!" << endl;
+    #if DEBUG_ON == 1  
+    cout << "!!! Translation coefficient more than 50 per cent !!!" << endl;
+    #endif
     fCoefTranslation = fCoefTranslation > 0.f ? 0.7 : -0.7;
   }
 
@@ -885,8 +916,10 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   else
     isRetSuccess = false;
 
-  std::cout << "The percentage of calculated frames to YAW to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
-  std::cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  #if DEBUG_ON == 1  
+  cout << "The percentage of calculated frames to YAW to setpoint is " << std::to_string((100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget))) << endl;  
+  cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  #endif
 
   iter = xCountMedianX.end();
   iter--;
@@ -904,8 +937,10 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   else
     isRetSuccess = false;
 
-  std::cout << "The percentage of calculated frames to X to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
-  std::cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  #if DEBUG_ON == 1  
+  cout << "The percentage of calculated frames to X to setpoint is " << std::to_string((100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget))) << endl;
+  cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  #endif
 
   iter = xCountMedianZ.end();
   iter--;
@@ -923,13 +958,17 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   else
     isRetSuccess = false;
 
-  std::cout << "The percentage of calculated frames to Z to setpoint is " << (100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget)) << endl;
-  std::cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  #if DEBUG_ON == 1  
+  cout << "The percentage of calculated frames to Z to setpoint is " << std::to_string((100.f * static_cast<float>(count) / static_cast<float>(nValuesToCalcTarget))) << endl;
+  cout << "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" << endl;
+  #endif
 
   float fDistance = sqrt(pow(fX, 2) + pow(fZ, 2));
 
 #if DEBUG_SOFT > 2
+#if DEBUG_ON > 0
   xFileToSave << std::to_string(fYaw * DEGRES_IN_RAD) + "	" << std::to_string(fX) << +" " << std::to_string(fDistance) << endl;
+#endif  
 #endif
 
   return isRetSuccess;

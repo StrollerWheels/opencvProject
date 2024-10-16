@@ -33,6 +33,7 @@
 #define SAFETY_MIN_PERCENTAGE_FRAMES_TO_CALC_SETPOINT (67.f / 100.f) ///< Minimal permissible percentage of frames for setpoint calculation
 #define SAFETY_MAX_COUNT_ITERATION_NO_COMMUNICATION_WCU (3) ///< Maximum permissible number ofiteration of no communication with the WCU
 /// @}
+#define DEBUG_ON (1)
 
 
 constexpr double PI = 3.141592653589793;
@@ -44,6 +45,7 @@ const float MARKER_LENGTH = 0.15; ///< Marker side length
 const int CAMERA_NUMBER = 1;     ///< Camera number in OS
 const int NO_PIN_FORWARD = 0;
 const int NO_PIN_BACK = 1;
+const int NO_PIN_SHUTDOWN = 10;
 const int SPI_CHANNEL = 1;
 const int SPI_PORT = 0;
 const int SPI_BAUDRATE = 100000;
@@ -64,7 +66,7 @@ const size_t COUNT_MEASUREMENT_FOR_MOVING_AVG = 3;
 constexpr float MISS_RATE_YAW_GRAD = /*400.999999999; /*/ 7.999999999;
 constexpr float MISS_RATE_YAW_RAD = MISS_RATE_YAW_GRAD / DEGRES_IN_RAD;
 constexpr float MISS_RATE_X_METER = /*100; /*/ 0.2;
-constexpr float MISS_RATE_Z_METER = /*100;          /*/ 0.3;
+constexpr float MISS_RATE_Z_METER = /*100;          /*/ 0.4;
 constexpr float IMPOSSIBLE_YAW_X_Z_VALUE = 100.f; ///< Moving average is initiated by this value, impossible value
 /** Value for conditional branching, just in case because of the specifics of storing float in memory */
 constexpr float IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT = (IMPOSSIBLE_YAW_X_Z_VALUE - FLOAT_EPSILON); ///< Moving average is initiated by this value
