@@ -13,13 +13,6 @@
 #include <asm/ioctl.h>
 #include <linux/spi/spidev.h>
 
-// #include <opencv2/opencv.hpp>
-// #include <opencv2/aruco.hpp>
-// #include <opencv2/highgui.hpp>
-// #include <opencv2/objdetect/aruco_detector.hpp>
-// #include <opencv2/calib3d.hpp>
-// #include <opencv2/core/mat.hpp>
-
 #include <wiringPi.h>
 #include <wiringPiSPI.h>
 
@@ -27,10 +20,6 @@
 #include "crc.h"
 #include "procedures.h"
 
-// 3 - All_save_in_file
-#define DEBUG_SOFT (5)
-
-#define TARGET_IS_CURRENT_POSITION
 
 enum class TEnumStatePosition
 {
@@ -359,22 +348,17 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
   vector<int> xIdDetectMarker;                             // Vector of identifiers of the detected markers
   vector<vector<Point2f>> xCornersMarker, xRejectedMarker; // Vector of detected marker corners
   aruco::DetectorParameters xDetectorParams;
-  /***/                                                                                                                  // xDetectorParams.cornerRefinementMethod = CORNER_REFINE_APRILTAG;
-  aruco::Dictionary dictionary = aruco::getPredefinedDictionary(/*aruco::DICT_ARUCO_MIP_36h12*/ cv::aruco::DICT_5X5_50); /***/
-  size_t nMarkers(0);                                                                                                    // Number of found markers (must be 1)
+  aruco::Dictionary dictionary = aruco::getPredefinedDictionary(cv::aruco::DICT_5X5_50);
+  size_t nMarkers(0); // Number of found markers (must be 1)
   double yaw(0), roll(0), pitch(0);
   float fSumYaw(0.f), fSumX(0.f), fSumCorrelatedX(0.f), fSumZ(0.f);
   float fYawOkNo(0.f), fX_OkNo(0.f), fCorrelatedX_OkNo(0.f), fZ_OkNo(0.f);
   float fYawBadNo(0.f), fX_BadNo(0.f), fCorrelatedX_BadNo(0.f), fZ_BadNo(0.f);
   float fCorrelatedX(fMovingCorrelatedX);
   bool isMarkerIdentified(false);
-  static aruco::ArucoDetector xDetector_(dictionary, xDetectorParams); // Detection of markers in an image
-  static bool isFirst_(true);
-  static size_t nNotIdentifiedRow(0);
+  static aruco::ArucoDetector xDetector__(dictionary, xDetectorParams); // Detection of markers in an image
+  static size_t nNotIdentifiedRow__(0);
   static size_t nMissesRow__(0);
-
-  /***/ float fPrevYawTemp(0.f);
-  /***/ bool isFirst(true);
 
   while (pxFramesToCalc.empty() == false)
   {
@@ -382,12 +366,12 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
     xFrameTemp1 = pxFramesToCalc.front();
     try
     {
-      xDetector_.detectMarkers(xFrameTemp1, xCornersMarker, xIdDetectMarker, xRejectedMarker); /// @warning Was exception!!!
+      xDetector__.detectMarkers(xFrameTemp1, xCornersMarker, xIdDetectMarker, xRejectedMarker); /// @warning Was exception!!!
     }
     catch (...)
     {
       #if DEBUG_ON == 1  
-      cout << "There is been an exception: xDetector_.detectMarkers()" << endl;
+      cout << "There is been an exception: xDetector__.detectMarkers()" << endl;
       #endif
     }
     /*terminate called after throwing an instance of 'cv::Exception'
@@ -505,11 +489,11 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
   // SAFETY CHECK: Marker not identified
   if (isMarkerIdentified == false)
   {
-    nNotIdentifiedRow++;
+    nNotIdentifiedRow__++;
   } else {
-    nNotIdentifiedRow = 0;
+    nNotIdentifiedRow__ = 0;
   }
-  if (nNotIdentifiedRow >= SAFETY_COUNT_ITERATION_MARKER_NOT_IDENTIFIED * 2)
+  if (nNotIdentifiedRow__ >= SAFETY_COUNT_ITERATION_MARKER_NOT_IDENTIFIED * 2)
     vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_MARKER_NOT_IDENTIFIED, " ! ! ! Marker not identified ! ! ! ");
 
   // SAFETY CHECK: More misses in a row
@@ -559,19 +543,18 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
 {
   float fCoefRotation(0.f), fCoefTranslation(0.f); // Coefficients of rotation and translation
   int16_t ssCoefShift(0);
-  static float fYawForward_(0.f), fX_Forward_(0.f), fCorrelatedX_Forward_(0.f), fZ_Forward_(0.f); // Calculated values at the point closest to the marker
-  static float fPeriod_(0.f), fAmplitude_(0.f);
-  /***/ static size_t nTemp(0), nTemp1(0);
+  static float fYawForward__(0.f), fX_Forward__(0.f), fCorrelatedX_Forward__(0.f), fZ_Forward__(0.f); // Calculated values at the point closest to the marker
+  static float fPeriod__(0.f), fAmplitude__(0.f);
 
   switch (eStatePosition_)
   {
   // At the closest point memorize values
   case TEnumStatePosition::STATE_FORWARD:
     // Memorize values
-    fYawForward_ = fAvgYaw;
-    fX_Forward_ = fAvgX;
-    fCorrelatedX_Forward_ = fCorrelatedAvgX;
-    fZ_Forward_ = fAvgZ;
+    fYawForward__ = fAvgYaw;
+    fX_Forward__ = fAvgX;
+    fCorrelatedX_Forward__ = fCorrelatedAvgX;
+    fZ_Forward__ = fAvgZ;
 
     // Waiting for movement to start
     while ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW))
@@ -586,7 +569,6 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
 
     eStatePosition_ = TEnumStatePosition::STATE_NONE;
 
-    /***/ nTemp++;
     break;
 
   // At the far point orientation calculation
@@ -594,43 +576,42 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
   {
     float fTemp(IMPOSSIBLE_YAW_X_Z_VALUE);
 
-    /***/ nTemp1++;
     // Yaw calculation
-    if ((fabsf(fYawForward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgYaw) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
-      fTemp = (4.f * fYawForward_ + fAvgYaw) / 5.f;
-    if ((fabsf(fYawForward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgYaw) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
-      fTemp = fYawForward_;
-    if ((fabsf(fYawForward_) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgYaw) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+    if ((fabsf(fYawForward__) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgYaw) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+      fTemp = (4.f * fYawForward__ + fAvgYaw) / 5.f;
+    if ((fabsf(fYawForward__) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgYaw) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+      fTemp = fYawForward__;
+    if ((fabsf(fYawForward__) > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgYaw) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
       fTemp = fAvgYaw;
     if (fTemp < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
       xAvgPeriodYaw_.push_back(fTemp);
 
     // X calculation
     fTemp = IMPOSSIBLE_YAW_X_Z_VALUE;
-    if ((fabsf(fX_Forward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
-      fTemp = (4.f * fX_Forward_ + fAvgX) / 5.f;
-    if ((fabsf(fX_Forward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgX) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)))
-      fTemp = fX_Forward_;
-    if ((fabsf(fX_Forward_) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)) && (fabsf(fAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+    if ((fabsf(fX_Forward__) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+      fTemp = (4.f * fX_Forward__ + fAvgX) / 5.f;
+    if ((fabsf(fX_Forward__) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fAvgX) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)))
+      fTemp = fX_Forward__;
+    if ((fabsf(fX_Forward__) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)) && (fabsf(fAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
       fTemp = fAvgX;
     if (fTemp < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
       xAvgPeriodX_.push_back(fTemp);
 
     // Correlated X calculation
     fTemp = IMPOSSIBLE_YAW_X_Z_VALUE;
-    if ((fabsf(fCorrelatedX_Forward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fCorrelatedAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
-      fTemp = (4.f * fCorrelatedX_Forward_ + fCorrelatedAvgX) / 5.f;
-    if ((fabsf(fCorrelatedX_Forward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fCorrelatedAvgX) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)))
-      fTemp = fCorrelatedX_Forward_;
-    if ((fabsf(fCorrelatedX_Forward_) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)) && (fabsf(fCorrelatedAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+    if ((fabsf(fCorrelatedX_Forward__) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fCorrelatedAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
+      fTemp = (4.f * fCorrelatedX_Forward__ + fCorrelatedAvgX) / 5.f;
+    if ((fabsf(fCorrelatedX_Forward__) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fabsf(fCorrelatedAvgX) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)))
+      fTemp = fCorrelatedX_Forward__;
+    if ((fabsf(fCorrelatedX_Forward__) > (IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT - 1.f)) && (fabsf(fCorrelatedAvgX) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
       fTemp = fCorrelatedAvgX;
     if (fTemp < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
       xCorrelatedAvgPeriodX_.push_back(fTemp);
 
     // Z calculation
     fTemp = IMPOSSIBLE_YAW_X_Z_VALUE;
-    if (fabsf(fZ_Forward_) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
-      fTemp = fZ_Forward_;
+    if (fabsf(fZ_Forward__) < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
+      fTemp = fZ_Forward__;
     if (fTemp < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT)
       xAvgPeriodZ_.push_back(fTemp);
 
@@ -733,7 +714,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     {
       fDistance = sqrt(pow(fMovingAvgX, 2.f) + pow(fMovingAvgZ, 2.f));
       prvRoataionTranslationCalculation(fMovingAvgYaw, fMovingCorrelatedAvgX, fDistance, xTarget_.fYaw, xTarget_.fX, xTarget_.fZ, xTarget_.fDistance,
-                                        OUT fCoefRotation, OUT fCoefTranslation, OUT ssCoefShift, fPeriod_, fAmplitude_);
+                                        OUT fCoefRotation, OUT fCoefTranslation, OUT ssCoefShift, fPeriod__, fAmplitude__);
       if (((1.5 * fMovingCorrelatedAvgX) > fMovingAvgZ) && (fMovingCorrelatedAvgX < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
         ssCoefShift = -1;
     }
@@ -752,11 +733,10 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
         xAvgPeriodZ_.erase(xAvgPeriodZ_.begin());
     }
 
-    /***/ float temp(0.f), temp1(0.f);
     this_thread::sleep_for(1500ms); /// @todo Reduce the delay if there are no SPI errors
     for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
     {
-      if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, fDistance, OUT fPeriod_, OUT fAmplitude_) == false)
+      if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, fDistance, OUT fPeriod__, OUT fAmplitude__) == false)
         asm("NOP");
       this_thread::sleep_for(5ms);
     }
@@ -791,20 +771,20 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fCorrelatedX, 
                                               float &fTargetDistance, OUT float &fCoefRotation, OUT float &fCoefTranslation,
                                               OUT int16_t &ssCoefShift, float &fPeriod, float &fAmplitude)
 {
-  static float fIntegralErrorYaw(0.f), fIntegralErrorX(0.f);
-  static bool isShiftCalcNow(false);
   float fErrorYaw = fTargetYaw - fYaw;
   float fErrorX = fTargetX - fCorrelatedX;
+  static float fIntegralErrorYaw__(0.f), fIntegralErrorX__(0.f);
+  static bool isShiftCalcNow__(false);
 
   if ((fYaw > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fCorrelatedX > IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     goto return_prvRoataionTranslationCalculation;
 
   // Calculation integral errors
-  fIntegralErrorYaw = fIntegralErrorYaw + fErrorYaw;
-  fIntegralErrorX = fIntegralErrorX + fErrorX;
+  fIntegralErrorYaw__ = fIntegralErrorYaw__ + fErrorYaw;
+  fIntegralErrorX__ = fIntegralErrorX__ + fErrorX;
   // Calculation translation and rotation coefficients
-  fCoefRotation = fErrorYaw * COEF_PROPORTIONAL_YAW + fIntegralErrorYaw * COEF_INTEGRAL_YAW * fPeriod;
-  fCoefTranslation = fErrorX * COEF_PROPORTIONAL_X + fIntegralErrorX * COEF_INTEGRAL_X * fPeriod;
+  fCoefRotation = fErrorYaw * COEF_PROPORTIONAL_YAW + fIntegralErrorYaw__ * COEF_INTEGRAL_YAW * fPeriod;
+  fCoefTranslation = fErrorX * COEF_PROPORTIONAL_X + fIntegralErrorX__ * COEF_INTEGRAL_X * fPeriod;
 
   // Calculation shift coefficient
   if (fDistance < MINIMAL_DISTANCE_VALUE_METER) /***/
@@ -814,17 +794,17 @@ static void prvRoataionTranslationCalculation(float &fYaw, float &fCorrelatedX, 
   if (fDistance > fTargetDistance)
     ssCoefShift = floor((fDistance - fTargetDistance) / (0.1) / fAmplitude);
     /***/
-  if (ssCoefShift > 2)  //(abs(ssCoefShift) > 2) 
+  if (ssCoefShift > 2)
   {
-    ssCoefShift = 2; //ssCoefShift > 0 ? 2 : -2;
+    ssCoefShift = 2;
   } else {
-    if (ssCoefShift > 1) //(abs(ssCoefShift) > 1)
-      ssCoefShift = 1; //ssCoefShift > 0 ? 1 : -1;
+    if (ssCoefShift > 1)
+      ssCoefShift = 1;
   }
   
-  if (isShiftCalcNow == false)
+  if (isShiftCalcNow__ == false)
     ssCoefShift = 0;
-  isShiftCalcNow = isShiftCalcNow == true ? false : true;
+  isShiftCalcNow__ = isShiftCalcNow__ == true ? false : true;
 
   if (fabsf(fCoefRotation) > 0.7)
   {
@@ -902,7 +882,7 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xX_To
   // Finding the average values
   auto iter = xCountMedianYaw.end();
   iter--;
-  auto medianValue = iter->second; // (xCountMedianYaw.end())->second;
+  auto medianValue = iter->second;
   float fSum(0.f);
   count = 0;
   for (auto &v : xYawToCalc)

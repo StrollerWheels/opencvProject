@@ -16,25 +16,13 @@
  * Orientation unit                           Wheel control unit
  *                              <------------ GPIO.0 = GPIO.1 = LOW
  *                              <------------ GPIO.0 = GPIO.1 = HIGH
- * TProtocolPullUpToMarker      ------------>
- * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
- *                                    marker movement
- *                              <------------ GPIO.0 = HIGH ; GPIO.1 = LOW
- *                              <------------ GPIO.0 = GPIO.1 = HIGH
- * TProtocoInWcuPullUpToMarker  ------------>
- * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
- *                                    marker movement
- *                              <------------ GPIO.0 = HIGH ; GPIO.1 = LOW
- *                              <------------ GPIO.0 = GPIO.1 = HIGH
  *                    target calculation
- * TProtocolInWcuStart          ------------>
- * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
+ * TProtocolInScuMotionCmd      <===========> TProtocolInOuConfirmation
  *                                    far point movement
  *                              <------------ GPIO.0 = LOW ; GPIO.1 = HIGH
  *                        frame capture
  *                              <------------ GPIO.0 = GPIO.1 = LOW
  * TProtocolInScuMotionCmd      <===========> TProtocolInOuCondition
- * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
  *                                     closest point movement
  *                              <------------ GPIO.0 = HIGH ; GPIO.1 = LOW
  *                        frame capture
@@ -43,7 +31,6 @@
  *                              <------------ GPIO.0 = LOW ; GPIO.1 = HIGH
  *                              <------------ GPIO.0 = GPIO.1 = LOW
  * TProtocolInScuMotionCmd      <===========> TProtocolInOuCondition
- * TProtocolInWcuReceiptRequest <===========> TProtocolInOuConfirmation
  * ...
  * ...
  ******************************************************************************
@@ -68,7 +55,8 @@
 
 
 #define MAX_SIZE_ARUCO_PACKET (sizeof(TProtocolInScuMotionCmd)) ///< Максимальный размер валидного пакета
-#define TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS (0.65) ///< Target distance to the marker at the closest point
+#define TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS (0.67) ///< Target distance to the marker at the closest point
+
 /** @name
  * ### Packet preambules
  * @{

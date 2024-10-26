@@ -368,14 +368,14 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
     vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
 
-  /***/ static size_t all = 0;
-  all++;
+  /***/ static size_t all__ = 0;
+  all__++;
   if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
   {
-    /***/ static size_t err = 0;
+    /***/ static size_t err__ = 0;
     ret = false;
     #if DEBUG_ON == 1  
-    cout << " ! ! ! CRC16 error ! ! !  error count is " + std::to_string(++err) + " from " + std::to_string(all) + " packets" << endl;
+    cout << " ! ! ! CRC16 error ! ! !  error count is " << std::to_string(++err__) << " from " << std::to_string(all__) << " packets" << endl;
     #endif
     if (ucId == ID_PACKET_IN_WCU_MOTION_CMD)
       nErrorPacketRow__++;
