@@ -76,7 +76,7 @@ static bool prvCalculateTarget(vector<double> &xYawToCalc, vector<double> &xCorr
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 int main(int argc, char *argv[])
 {
-  this_thread::sleep_for(5000ms);
+  this_thread::sleep_for(3000ms);
 
   
   Mat xFrameCommon, xFrameTemp; // Captured frames
