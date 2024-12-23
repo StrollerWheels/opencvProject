@@ -16,9 +16,13 @@
 #include <string>
 #include <chrono>
 #include <thread>
+#include <unistd.h>
+#include <termios.h>
+#include <fcntl.h>
 
 #include <wiringPi.h>
 #include <wiringPiSPI.h>
+#include <wiringSerial.h>
 
 #include "procedures.h"
 #include "settings.h"
@@ -49,8 +53,8 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   pinMode(NO_PIN_FORWARD, INPUT);
   pinMode(NO_PIN_BACK, INPUT);  
 
-  //pthread_create (&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
-  //pthread_detach(xThreadCheckPinShutdown);
+  pthread_create (&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
+  pthread_detach(xThreadCheckPinShutdown);
 
   errno = 0;
   if (wiringPiSPISetupMode(SPI_CHANNEL, SPI_PORT, SPI_BAUDRATE, SPI_MODE) < 0)
@@ -424,28 +428,59 @@ void prvAlertWCU(uint8_t ucEventId)
 }
 
 
+/**
+ * @brief Shutdown either by pin level or by USART message
+ * @note Is executed in a separate thread
+*/
 static void *prvCheckShutdown (void *args)
 {
-  static size_t nConfirmation(0);
+  static size_t nConfirmation__(0);
+  static auto fdUsart__(0);
+  static size_t nBytes__(0);
+  static uint8_t pucDataUsartIn__[100];
+  static TMessageInOuByUsart *pxMsgToOu__ = (TMessageInOuByUsart*)pucDataUsartIn__;
 
   this_thread::sleep_for(5000ms);
 
+  if ((fdUsart__ = serialOpen ("/dev/ttyS3", 115200)) < 0)  
+    fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
+    
   pinMode(NO_PIN_SHUTDOWN, INPUT);
 
   for ( ; ;)
   {
     if (digitalRead(NO_PIN_SHUTDOWN) == HIGH)
     {
-      nConfirmation++;
+      nConfirmation__++;
     } else {
-      nConfirmation = 0;
+      nConfirmation__ = 0;
     }
-    if (nConfirmation > 5)
+
+    // Either by pin shutdown
+    if (nConfirmation__ > 5)
     {
       this_thread::sleep_for(38000ms);
       if (xCaptureFrame.isOpened() == true)
         xCaptureFrame.release();          
       std::system("shutdown now");
+    }
+
+    // Or by message shutdown
+    nBytes__ = read(fdUsart__, pucDataUsartIn__, 100);
+    if (nBytes__ > 0)
+    {
+      nBytes__ = 0;
+      if ((pxMsgToOu__->usPreambule != PREAMBULE_IN_OU) || 
+          (crc16citt(pucDataUsartIn__, sizeof(TMessageInOuByUsart) - 2) != pxMsgToOu__->crc16))
+          continue;
+      switch (pxMsgToOu__->eMsgToOuUsart)
+      {
+        case MSG_IN_OU_SHUTDOWN :
+          std::system("shutdown now");
+          break;
+        default :
+          break;
+      }
     }
 
     this_thread::sleep_for(750ms);

@@ -93,6 +93,18 @@ typedef enum
 #endif
 
 
+/// Message to OU from WCU by USART
+#ifdef __cplusplus
+#define MSG_IN_OU_SHUTDOWN (0x01)
+#else
+typedef enum
+{
+  MSG_IN_OU_SHUTDOWN = 0x01,              ///<
+}TEnumeMsgToOuUsart;
+#endif
+
+
+
 
 /// Regular packet with a motion command. It is sent after the far point
 #pragma pack(push,1)
@@ -137,6 +149,23 @@ typedef struct
   uint16_t crc16; ///< Контрольная сумма, см. @ref crc16.c
 }TProtocolInOuCondition;
 #pragma pack(pop)
+
+
+/// Message from WCU to OU by USART
+#pragma pack(push,1)
+typedef struct
+{
+  uint16_t usPreambule; ///< Преамбула пакета, ```= 0x9999```, @ref PREAMBULE_IN_OU
+  /// Идентификатор пакета = ID_PACKET_IN_WCU_MOTION_CMD
+  #ifdef __cplusplus
+  uint8_t eMsgToOuUsart;
+  #else
+  TEnumeMsgToOuUsart eMsgToOuUsart;
+  #endif
+  uint16_t crc16; ///< Контрольная сумма, см. @ref crc16.c
+}TMessageInOuByUsart;
+#pragma pack(pop)
+
 
 
 #endif /* PROTOCOLARUCO_H_ */
