@@ -457,9 +457,9 @@ static void *prvCheckShutdown (void *args)
     }
 
     // Either by pin shutdown
-    if (nConfirmation__ > 5)
+    if (nConfirmation__ > 5000)/***/
     {
-      this_thread::sleep_for(38000ms);
+      this_thread::sleep_for(380000ms);
       if (xCaptureFrame.isOpened() == true)
         xCaptureFrame.release();          
       std::system("shutdown now");
