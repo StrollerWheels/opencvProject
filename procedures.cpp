@@ -32,6 +32,7 @@ using namespace std;
 using namespace cv;
 
 static size_t cameraNo_ = 0;
+static auto fdUsart_(0);
 
 extern cv::Mat xMarkerPoints;
 extern Mat xCameraMatrix, xDistCoefficients; ///< Camera calibration settings
@@ -61,6 +62,12 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   errno = 0;
   if (wiringPiSPISetupMode(SPI_CHANNEL, SPI_PORT, SPI_BAUDRATE, SPI_MODE) < 0)
     vRiscBehavior(TEnumRiscBehavior::RISC_NOT_SETUP_SPI, strerror(errno));
+  
+  if ((fdUsart_ = serialOpen ("/dev/ttyS3", 115200)) < 0)  
+    fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
+
+
+   /***/  return;
 
 #if DEBUG_ON > 0
   xFileToSave.open("../Angles.ods");
@@ -385,7 +392,7 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   bool ret(true);
   int res(0);
   string sError;
-  static TProtocolInScuMotionCmd xPacketOut_;
+  static TProtocolInScuMotionCmd xPacketOut_, xPacketUsart_;
   TProtocolInOuCondition *pxPacketIn = reinterpret_cast<TProtocolInOuCondition *>(&xPacketOut_);
   static size_t nErrorPacketRow__(0);
 
@@ -396,9 +403,14 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   xPacketOut_.ssShift = ssShift;
   xPacketOut_.fDistance = fDistance;
   xPacketOut_.crc16 = crc16citt(reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_) - 2);
+  xPacketUsart_ = xPacketOut_;
 
   errno = 0;
   if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
+    vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
+  
+  // Send data via USART
+  if (write(fdUsart_, &xPacketUsart_, sizeof(xPacketUsart_)) < 0) 
     vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
 
   /***/ static size_t all__ = 0;
@@ -463,15 +475,11 @@ void prvAlertWCU(uint8_t ucEventId)
 static void *prvCheckShutdown (void *args)
 {
   static size_t nConfirmation__(0);
-  static auto fdUsart__(0);
   static size_t nBytes__(0);
   static uint8_t pucDataUsartIn__[100];
   static TMessageInOuByUsart *pxMsgToOu__ = (TMessageInOuByUsart*)pucDataUsartIn__;
 
-  this_thread::sleep_for(5000ms);
-
-  if ((fdUsart__ = serialOpen ("/dev/ttyS3", 115200)) < 0)  
-    fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
+  this_thread::sleep_for(5000ms);  
     
   pinMode(NO_PIN_SHUTDOWN, INPUT);
 
@@ -494,7 +502,7 @@ static void *prvCheckShutdown (void *args)
     }
 
     // Or by message shutdown
-    nBytes__ = read(fdUsart__, pucDataUsartIn__, 100);
+    nBytes__ = read(fdUsart_, pucDataUsartIn__, 100);
     if (nBytes__ > 0)
     {
       nBytes__ = 0;

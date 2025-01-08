@@ -85,6 +85,28 @@ int main(int argc, char *argv[])
 
   vInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
 
+
+
+  /***/
+  float fTemp_Rot(1.f), fTemp_Transl(2.f), fTemp_Dist(4.f), fTemp_Period(7.f), fTemp_A(2.f);
+  int16_t ssTemp_Shift(1);
+  for ( ; ; )
+  {
+    this_thread::sleep_for(1500ms); /// @todo Reduce the delay if there are no SPI errors
+    for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
+    {
+      if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fTemp_Rot, fTemp_Transl, ssTemp_Shift, fTemp_Dist,
+       OUT fTemp_Period, OUT fTemp_A) == false)
+        asm("NOP");
+      this_thread::sleep_for(50ms);
+    }
+  }
+
+  /***/
+
+
+
+
   // Just in case, while the control WCU initializes
   while (((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW)) ||
          ((digitalRead(NO_PIN_FORWARD) == LOW) && (digitalRead(NO_PIN_BACK) == HIGH)))
