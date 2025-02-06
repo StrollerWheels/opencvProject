@@ -56,18 +56,20 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   pinMode(NO_PIN_FORWARD, INPUT);
   pinMode(NO_PIN_BACK, INPUT);
 
+<<<<<<< HEAD
   // pthread_create (&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
   // pthread_detach(xThreadCheckPinShutdown);
+=======
+  pthread_create(&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
+  pthread_detach(xThreadCheckPinShutdown);
+>>>>>>> a43650f (Comparison in operational riding mode)
 
   errno = 0;
   if (wiringPiSPISetupMode(SPI_CHANNEL, SPI_PORT, SPI_BAUDRATE, SPI_MODE) < 0)
     vRiscBehavior(TEnumRiscBehavior::RISC_NOT_SETUP_SPI, strerror(errno));
-  
-  if ((fdUsart_ = serialOpen ("/dev/ttyS3", 115200)) < 0)  
-    fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
 
-
-   /***/  return;
+  if ((fdUsart_ = serialOpen("/dev/ttyS3", 115200)) < 0)
+    fprintf(stderr, "Unable to open serial device: %s\n", strerror(errno));
 
 #if DEBUG_ON > 0
   xFileToSave.open("../Angles.ods");
@@ -81,10 +83,17 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   size_t nAttemptOpen = 10;
   do
   {
+<<<<<<< HEAD
     xCaptureFrame.open(CAMERA_NUMBER_0, cv::CAP_V4L2);
     if (xCaptureFrame.isOpened() == false)
 #if DEBUG_ON == 1
       cout << "Cannot open camera 0" << endl;
+=======
+    xCaptureFrame.open(CAMERA_NUMBER, cv::CAP_V4L2);
+    if (xCaptureFrame.isOpened() == false)
+#if DEBUG_ON == 1
+      cout << "Cannot open camera" << endl;
+>>>>>>> a43650f (Comparison in operational riding mode)
 #else
       asm("NOP");
 #endif
@@ -408,19 +417,51 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   errno = 0;
   if (wiringPiSPIDataRW(SPI_CHANNEL, reinterpret_cast<unsigned char *>(&xPacketOut_), sizeof(xPacketOut_)) < 0)
     vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
-  
+
   // Send data via USART
-  if (write(fdUsart_, &xPacketUsart_, sizeof(xPacketUsart_)) < 0) 
+  if (write(fdUsart_, &xPacketUsart_, sizeof(xPacketUsart_)) < 0)
     vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
 
-  /***/ static size_t all__ = 0;
-  all__++;
+  /***/ static size_t nSentPacket__ = 0;
+  nSentPacket__++;
+  auto xTimeStart = std::chrono::steady_clock::now();
+  auto xTimeEnd = std::chrono::steady_clock::now();
+  while (std::chrono::duration_cast<std::chrono::milliseconds>(xTimeEnd - xTimeStart).count() < 500)
+    xTimeEnd = std::chrono::steady_clock::now();
+  TProtocolInOuCondition pxBufUsartIn[2];
+  static size_t nErrUsart__ = 0;
+
+  // USART data reading and parsing
+  size_t nBytesUsart = read(fdUsart_, (reinterpret_cast<void *>(pucBufUsart)), sizeof(TProtocolInOuCondition) * 2);
+  if (nBytesUsart != sizeof(TProtocolInOuCondition))
+  {
+#if DEBUG_ON == 1
+    cout << " ! ! ! Missing USART packet ! ! !  USART error count is "
+         << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
+#endif
+  }
+  else
+  {
+    if (pxBufUsartIn[0].crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxBufUsartIn), sizeof(TProtocolInOuCondition) - 2))
+    {
+#if DEBUG_ON == 1
+      cout << " ! ! ! CRC16 USART error ! ! !  USART error count is "
+           << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
+#endif
+    }
+  }
+
+  // SPI data parsing
   if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
   {
     /***/ static size_t err__ = 0;
     ret = false;
 #if DEBUG_ON == 1
+<<<<<<< HEAD
     cout << " ! ! ! CRC16 error ! ! !  error count is " << std::to_string(++err__) << " from " << std::to_string(all__) << " packets" << endl;
+=======
+    cout << " ! ! ! CRC16 SPI error ! ! !  SPI error count is " << std::to_string(++err__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
+>>>>>>> a43650f (Comparison in operational riding mode)
 #endif
     if (ucId == ID_PACKET_IN_WCU_MOTION_CMD)
       nErrorPacketRow__++;
@@ -467,20 +508,19 @@ void prvAlertWCU(uint8_t ucEventId)
   }
 }
 
-
 /**
  * @brief Shutdown either by pin level or by USART message
  * @note Is executed in a separate thread
-*/
-static void *prvCheckShutdown (void *args)
+ */
+static void *prvCheckShutdown(void *args)
 {
   static size_t nConfirmation__(0);
   static size_t nBytes__(0);
   static uint8_t pucDataUsartIn__[100];
-  static TMessageInOuByUsart *pxMsgToOu__ = (TMessageInOuByUsart*)pucDataUsartIn__;
+  static TMessageInOuByUsart *pxMsgToOu__ = (TMessageInOuByUsart *)pucDataUsartIn__;
 
-  this_thread::sleep_for(5000ms);  
-    
+  this_thread::sleep_for(5000ms);
+
   pinMode(NO_PIN_SHUTDOWN, INPUT);
 
   for (;;)
@@ -488,12 +528,14 @@ static void *prvCheckShutdown (void *args)
     if (digitalRead(NO_PIN_SHUTDOWN) == HIGH)
     {
       nConfirmation__++;
-    } else {
+    }
+    else
+    {
       nConfirmation__ = 0;
     }
 
     // Either by pin shutdown
-    if (nConfirmation__ > 5000)/***/
+    if (nConfirmation__ > 5000) /***/
     {
       this_thread::sleep_for(380000ms);
       if (xCaptureFrame.isOpened() == true)
@@ -506,16 +548,16 @@ static void *prvCheckShutdown (void *args)
     if (nBytes__ > 0)
     {
       nBytes__ = 0;
-      if ((pxMsgToOu__->usPreambule != PREAMBULE_IN_OU) || 
+      if ((pxMsgToOu__->usPreambule != PREAMBULE_IN_OU) ||
           (crc16citt(pucDataUsartIn__, sizeof(TMessageInOuByUsart) - 2) != pxMsgToOu__->crc16))
-          continue;
+        continue;
       switch (pxMsgToOu__->eMsgToOuUsart)
       {
-        case MSG_IN_OU_SHUTDOWN :
-          std::system("shutdown now");
-          break;
-        default :
-          break;
+      case MSG_IN_OU_SHUTDOWN:
+        std::system("shutdown now");
+        break;
+      default:
+        break;
       }
     }
 
