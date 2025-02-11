@@ -733,15 +733,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
         xAvgPeriodZ_.erase(xAvgPeriodZ_.begin());
     }
 
-    this_thread::sleep_for(1500ms); /// @todo Reduce the delay if there are no SPI errors
-    for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
-    {
-      if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, fDistance, OUT fPeriod__, OUT fAmplitude__) == false)
-        asm("NOP");
-      this_thread::sleep_for(5ms);
-    }
-
-    // Waiting for movement to start
+  // Waiting for movement to start
     while ((digitalRead(NO_PIN_FORWARD) == LOW) && (digitalRead(NO_PIN_BACK) == HIGH))
     {
       if (bCaptureFrame(xCaptureFrame, xFrameCommon, 10) == false)
@@ -751,6 +743,14 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     // Checking the correctness of the combination on the input
     if ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW))
       vRiscBehavior(TEnumRiscBehavior::RISC_WRONG_INPUT_COMBINATION, "Momentary movements between points of extrema");
+      
+    this_thread::sleep_for(800ms); /// @todo Reduce the delay if there are no SPI errors
+    for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
+    {
+      if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, fDistance, OUT fPeriod__, OUT fAmplitude__) == false)
+        asm("NOP");
+      this_thread::sleep_for(5ms);
+    }    
 
     eStatePosition_ = TEnumStatePosition::STATE_NONE;
 
