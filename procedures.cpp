@@ -56,13 +56,8 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   pinMode(NO_PIN_FORWARD, INPUT);
   pinMode(NO_PIN_BACK, INPUT);
 
-<<<<<<< HEAD
-  // pthread_create (&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
-  // pthread_detach(xThreadCheckPinShutdown);
-=======
   pthread_create(&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
   pthread_detach(xThreadCheckPinShutdown);
->>>>>>> a43650f (Comparison in operational riding mode)
 
   errno = 0;
   if (wiringPiSPISetupMode(SPI_CHANNEL, SPI_PORT, SPI_BAUDRATE, SPI_MODE) < 0)
@@ -83,17 +78,10 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   size_t nAttemptOpen = 10;
   do
   {
-<<<<<<< HEAD
     xCaptureFrame.open(CAMERA_NUMBER_0, cv::CAP_V4L2);
     if (xCaptureFrame.isOpened() == false)
 #if DEBUG_ON == 1
       cout << "Cannot open camera 0" << endl;
-=======
-    xCaptureFrame.open(CAMERA_NUMBER, cv::CAP_V4L2);
-    if (xCaptureFrame.isOpened() == false)
-#if DEBUG_ON == 1
-      cout << "Cannot open camera" << endl;
->>>>>>> a43650f (Comparison in operational riding mode)
 #else
       asm("NOP");
 #endif
@@ -432,7 +420,7 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   static size_t nErrUsart__ = 0;
 
   // USART data reading and parsing
-  size_t nBytesUsart = read(fdUsart_, (reinterpret_cast<void *>(pucBufUsart)), sizeof(TProtocolInOuCondition) * 2);
+  size_t nBytesUsart = read(fdUsart_, (reinterpret_cast<void *>(pxBufUsartIn)), sizeof(TProtocolInOuCondition) * 2);
   if (nBytesUsart != sizeof(TProtocolInOuCondition))
   {
 #if DEBUG_ON == 1
@@ -457,11 +445,7 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
     /***/ static size_t err__ = 0;
     ret = false;
 #if DEBUG_ON == 1
-<<<<<<< HEAD
-    cout << " ! ! ! CRC16 error ! ! !  error count is " << std::to_string(++err__) << " from " << std::to_string(all__) << " packets" << endl;
-=======
     cout << " ! ! ! CRC16 SPI error ! ! !  SPI error count is " << std::to_string(++err__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
->>>>>>> a43650f (Comparison in operational riding mode)
 #endif
     if (ucId == ID_PACKET_IN_WCU_MOTION_CMD)
       nErrorPacketRow__++;
@@ -554,6 +538,7 @@ static void *prvCheckShutdown(void *args)
       switch (pxMsgToOu__->eMsgToOuUsart)
       {
       case MSG_IN_OU_SHUTDOWN:
+        this_thread::sleep_for(380000ms);
         std::system("shutdown now");
         break;
       default:
