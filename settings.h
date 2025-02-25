@@ -45,7 +45,7 @@ constexpr double DEGRES_IN_RAD = 180 / PI;
 
 constexpr float FLOAT_EPSILON = 0.00001;
 
-const float MARKER_LENGTH = 0.15; ///< Marker side length
+const float MARKER_LENGTH = 0.06; ///< Marker side length
 const int CAMERA_NUMBER_0 = 0;     ///< Camera number in OS, first variant
 const int CAMERA_NUMBER_1 = 1;     ///< Camera number in OS, second variant
 const int NO_PIN_FORWARD = 0;
@@ -64,7 +64,7 @@ const float COEF_INTEGRAL_X = 0.004;
 const float COEF_DIFFERENTIAL_X = 0.f;
 
 const size_t COUNT_FRAMES_TO_CALC = 5;
-const size_t COUNT_FRAMES_TO_CALC_TARGET = 50;
+const size_t COUNT_FRAMES_TO_CALC_TARGET = 20;/***/
 const size_t COUNT__OF_DATA_PACKET_SENDS = 7;
 
 const size_t COUNT_MEASUREMENT_FOR_MOVING_AVG = 3;

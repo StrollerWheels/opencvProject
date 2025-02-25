@@ -108,13 +108,13 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
     else
     {
       cameraNo_ = CAMERA_NUMBER_1;
-      cout << "Open camera 1 (/dev/video1)" <<endl;
+      cout << "Open camera 1 (/dev/video1)" << endl;
     }
   }
   else
   {
     cameraNo_ = CAMERA_NUMBER_0;
-    cout << "Open camera 0 (/dev/video0)" <<endl;
+    cout << "Open camera 0 (/dev/video0)" << endl;
   }
 
   // Camera setup
@@ -419,25 +419,25 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
   TProtocolInOuCondition pxBufUsartIn[2];
   static size_t nErrUsart__ = 0;
 
-  // USART data reading and parsing
-  size_t nBytesUsart = read(fdUsart_, (reinterpret_cast<void *>(pxBufUsartIn)), sizeof(TProtocolInOuCondition) * 2);
-  if (nBytesUsart != sizeof(TProtocolInOuCondition))
-  {
-#if DEBUG_ON == 1
-    cout << " ! ! ! Missing USART packet ! ! !  USART error count is "
-         << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
-#endif
-  }
-  else
-  {
-    if (pxBufUsartIn[0].crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxBufUsartIn), sizeof(TProtocolInOuCondition) - 2))
-    {
-#if DEBUG_ON == 1
-      cout << " ! ! ! CRC16 USART error ! ! !  USART error count is "
-           << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
-#endif
-    }
-  }
+  //   // USART data reading and parsing
+  //   size_t nBytesUsart = read(fdUsart_, (reinterpret_cast<void *>(pxBufUsartIn)), sizeof(TProtocolInOuCondition) * 2);
+  //   if (nBytesUsart != sizeof(TProtocolInOuCondition))
+  //   {
+  // #if DEBUG_ON == 1
+  //     cout << " ! ! ! Missing USART packet ! ! !  USART error count is "
+  //          << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
+  // #endif
+  //   }
+  //   else
+  //   {
+  //     if (pxBufUsartIn[0].crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxBufUsartIn), sizeof(TProtocolInOuCondition) - 2))
+  //     {
+  // #if DEBUG_ON == 1
+  //       cout << " ! ! ! CRC16 USART error ! ! !  USART error count is "
+  //            << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
+  // #endif
+  //     }
+  //   }
 
   // SPI data parsing
   if (pxPacketIn->crc16 != crc16citt(reinterpret_cast<unsigned char *>(pxPacketIn), sizeof(xPacketOut_) - 2))
@@ -502,6 +502,9 @@ static void *prvCheckShutdown(void *args)
   static size_t nBytes__(0);
   static uint8_t pucDataUsartIn__[100];
   static TMessageInOuByUsart *pxMsgToOu__ = (TMessageInOuByUsart *)pucDataUsartIn__;
+  static TProtocolInOuCondition *pxConditionToOu__ = (TProtocolInOuCondition *)pucDataUsartIn__;
+  static size_t nErrUsart__ = 0;
+  static size_t nSentPacket__ = 0;
 
   this_thread::sleep_for(5000ms);
 
@@ -532,17 +535,59 @@ static void *prvCheckShutdown(void *args)
     if (nBytes__ > 0)
     {
       nBytes__ = 0;
-      if ((pxMsgToOu__->usPreambule != PREAMBULE_IN_OU) ||
-          (crc16citt(pucDataUsartIn__, sizeof(TMessageInOuByUsart) - 2) != pxMsgToOu__->crc16))
-        continue;
-      switch (pxMsgToOu__->eMsgToOuUsart)
+      bool isValid = (pxMsgToOu__->eMsgToOuUsart == MSG_IN_OU_SHUTDOWN) || (pxConditionToOu__->eIdPacketAruco == ID_PACKET_IN_OU_CONDITION);
+      if ((pxMsgToOu__->usPreambule != PREAMBULE_IN_OU) || (isValid == false))
       {
-      case MSG_IN_OU_SHUTDOWN:
-        this_thread::sleep_for(380000ms);
-        std::system("shutdown now");
-        break;
-      default:
-        break;
+#if DEBUG_ON == 1
+        cout << " ! ! ! Error USART packet ! ! !  USART error count is "
+             << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
+#endif
+      }
+      else
+      {
+        switch (pucDataUsartIn__[2]) // 2 - Message or ID packet with condition
+        {
+        case MSG_IN_OU_SHUTDOWN:
+          if (crc16citt(pucDataUsartIn__, sizeof(TMessageInOuByUsart) - 2) != pxMsgToOu__->crc16)
+          {
+#if DEBUG_ON == 1
+            cout << " ! ! ! Error USART packet ! ! !  USART error count is "
+                 << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
+#endif
+          }
+          else
+          {
+            this_thread::sleep_for(38000ms);/***/
+            std::system("shutdown now");
+          }
+          break;
+        case ID_PACKET_IN_OU_CONDITION:
+          if (crc16citt(pucDataUsartIn__, sizeof(TProtocolInOuCondition) - 2) != pxConditionToOu__->crc16)
+          {
+#if DEBUG_ON == 1
+            cout << " ! ! ! Error USART packet ! ! !  USART error count is "
+                 << std::to_string(++nErrUsart__) << " from " << std::to_string(nSentPacket__) << " packets" << endl;
+#endif
+          }
+          else
+          {
+            nSentPacket__++;
+          }
+          break;
+        default:
+          break;
+        }
+
+        // continue;
+        // switch (pxMsgToOu__->eMsgToOuUsart)
+        // {
+        // case MSG_IN_OU_SHUTDOWN:
+        //   this_thread::sleep_for(380000ms);
+        //   std::system("shutdown now");
+        //   break;
+        // default:
+        //   break;
+        // }
       }
     }
 
