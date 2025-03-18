@@ -407,17 +407,17 @@ bool bSendPacketToStroller(uint8_t ucId, float &fCoefRotation, float &fCoefTrans
     vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
 
   // Send data via USART
-  if (write(fdUsart_, &xPacketUsart_, sizeof(xPacketUsart_)) < 0)
-    vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
+  // if (write(fdUsart_, &xPacketUsart_, sizeof(xPacketUsart_)) < 0)
+  //   vRiscBehavior(TEnumRiscBehavior::RISC_CANNOT_SEND_SPI_PACKET, strerror(errno));
 
   /***/ static size_t nSentPacket__ = 0;
   nSentPacket__++;
-  auto xTimeStart = std::chrono::steady_clock::now();
-  auto xTimeEnd = std::chrono::steady_clock::now();
-  while (std::chrono::duration_cast<std::chrono::milliseconds>(xTimeEnd - xTimeStart).count() < 500)
-    xTimeEnd = std::chrono::steady_clock::now();
-  TProtocolInOuCondition pxBufUsartIn[2];
-  static size_t nErrUsart__ = 0;
+  // auto xTimeStart = std::chrono::steady_clock::now();
+  // auto xTimeEnd = std::chrono::steady_clock::now();
+  // while (std::chrono::duration_cast<std::chrono::milliseconds>(xTimeEnd - xTimeStart).count() < 500)
+  //   xTimeEnd = std::chrono::steady_clock::now();
+  // TProtocolInOuCondition pxBufUsartIn[2];
+  // static size_t nErrUsart__ = 0;
 
   //   // USART data reading and parsing
   //   size_t nBytesUsart = read(fdUsart_, (reinterpret_cast<void *>(pxBufUsartIn)), sizeof(TProtocolInOuCondition) * 2);
