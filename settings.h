@@ -45,7 +45,7 @@ constexpr double DEGRES_IN_RAD = 180 / PI;
 
 constexpr float FLOAT_EPSILON = 0.00001;
 
-const float MARKER_LENGTH = 0.15; ///< Marker side length
+const float MARKER_LENGTH = 0.15;/***/ ///< Marker side length
 const int CAMERA_NUMBER_0 = 0;     ///< Camera number in OS, first variant
 const int CAMERA_NUMBER_1 = 1;     ///< Camera number in OS, second variant
 const int NO_PIN_FORWARD = 0;
@@ -79,5 +79,9 @@ const float TARGET_DISTANCE_VALUE_METER = TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_P
 const float MAX_RECOMMENDED_DISTANCE_METER = TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS + 0.25;
 const float MINIMAL_DISTANCE_VALUE_METER = 0.62; /// @note Zoom in. when the camera will replace
 const float MINIMAL_DISTANCE_VALUE_METER_TWO_SHIFT = 0.56; /// @note Zoom in. when the camera will replace
+const float MINIMAL_DISTANCE_VALUE_METER_THREE_SHIFT = 0.5; /// @note Zoom in. when the camera will replace
+const float MINIMAL_DISTANCE_VALUE_METER_FOUR_SHIFT = 0.44; /// @note Zoom in. when the camera will replace
+const float MINIMAL_DISTANCE_VALUE_METER_FIVE_SHIFT = 0.38; /// @note Zoom in. when the camera will replace
+const float MINIMAL_DISTANCE_VALUE_PERMISSIBLE = 0.32; /// @note Zoom in. when the camera will replace
 
 #endif // SETTINGS_H_
