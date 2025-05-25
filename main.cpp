@@ -63,7 +63,7 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
                                          Mat &xCameraMatrix, Mat &xDistCoefficients, OUT float &fAvgYaw, OUT float &fAvgX, OUT float &fCorrelatedAvgX,
                                          OUT float &fAvgZ, float &fTargetYaw, float &fMovingYaw, float fMovingX, float fMovingCorrelatedX, float fMovingZ);
 static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float &fAvgYaw, float &fAvgX, float &fCorrelatedAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
-                                      OUT float &fMovingAvgX, OUT float &fMovingCorrelatedAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon);
+                                      OUT float &fMovingAvgX, OUT float &fMovingCorrelatedAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon, bool isCalcOk);
 static void prvRoataionTranslationCalculation(float &fYaw, float &fX, float fDistance, float &fTargetYaw, float &fTargetX, float &fTargetZ,
                                               float &fTargetDistance, OUT float &fCoefRotation, OUT float &fCoefTranslation,
                                               OUT int16_t &ssCoefShift, float &fPeriod, float &fAmplitude);
@@ -80,6 +80,7 @@ int main(int argc, char *argv[])
   Mat xFrameCommon, xFrameTemp; // Captured frames
   float fAvgYaw(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgX(IMPOSSIBLE_YAW_X_Z_VALUE);
   float fCorrelatedAvgX(IMPOSSIBLE_YAW_X_Z_VALUE), fAvgZ(IMPOSSIBLE_YAW_X_Z_VALUE); // Arithmetic average
+  bool isYawTranslationCalculationOk(true);                                         // Result of calculation the position of the stroller (if unsuccessful, shift back) /// @attention
 
   vInitializationSystem(xFileToSave, xCameraMatrix, xDistCoefficients, xCaptureFrame, xMarkerPoints);
 
@@ -217,7 +218,7 @@ int main(int argc, char *argv[])
       Mat xFrameTemp;
       // At the closest point we only memorize the arithmetic mean value
       prvMovingAvgAndSendPacket(eStateTemp, fMovingAvgYaw_, fMovingAvgX_, fMovingCorrelatedAvgX_, fMovingAvgZ_,
-                                OUT fTemp3, OUT fTemp3, OUT fTemp3, OUT fTemp3, xCaptureFrame, OUT xFrameTemp);
+                                OUT fTemp3, OUT fTemp3, OUT fTemp3, OUT fTemp3, xCaptureFrame, OUT xFrameTemp, true);
 
 #ifndef TARGET_IS_CURRENT_POSITION
       xTarget_.fYaw = xTarget_.fX = 0.f;
@@ -339,8 +340,9 @@ int main(int argc, char *argv[])
 #endif
 
     // Calculation of the arithmetic mean ratation angle (Yaw), X and Z of measurement at one far or closest point
-    if ((prvYawTranslationCalculation(eStatePosition_, pxFramesToCalc_, xMarkerPoints, xCameraMatrix, xDistCoefficients, OUT fAvgYaw, OUT fAvgX, OUT fCorrelatedAvgX,
-                                      OUT fAvgZ, xTarget_.fYaw, fMovingAvgYaw_, fMovingAvgX_, fMovingCorrelatedAvgX_, fMovingAvgZ_) == false) &&
+    isYawTranslationCalculationOk = prvYawTranslationCalculation(eStatePosition_, pxFramesToCalc_, xMarkerPoints, xCameraMatrix, xDistCoefficients, OUT fAvgYaw, OUT fAvgX,
+                                                                 OUT fCorrelatedAvgX, OUT fAvgZ, xTarget_.fYaw, fMovingAvgYaw_, fMovingAvgX_, fMovingCorrelatedAvgX_, fMovingAvgZ_);
+    if ((isYawTranslationCalculationOk == false) &&
         (fMovingAvgYaw_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) && (fMovingAvgX_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT) &&
         (fMovingAvgZ_ < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
     {
@@ -356,7 +358,7 @@ int main(int argc, char *argv[])
     // Caluclation of moving average at the far point and sending a packet of trajectory correction coefficients to the WCU
     // At the closest point we only memorize the arithmetic mean value
     prvMovingAvgAndSendPacket(eStatePosition_, fAvgYaw, fAvgX, fCorrelatedAvgX, fAvgZ, OUT fMovingAvgYaw_, OUT fMovingAvgX_,
-                              OUT fMovingCorrelatedAvgX_, OUT fMovingAvgZ_, xCaptureFrame, xFrameCommon);
+                              OUT fMovingCorrelatedAvgX_, OUT fMovingAvgZ_, xCaptureFrame, xFrameCommon, isYawTranslationCalculationOk);
   }
 
   return 0;
@@ -588,12 +590,13 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
  *  @note At the closest point we only memorize the arithmetic mean value
  */
 static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float &fAvgYaw, float &fAvgX, float &fCorrelatedAvgX, float &fAvgZ, OUT float &fMovingAvgYaw,
-                                      OUT float &fMovingAvgX, OUT float &fMovingCorrelatedAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon)
+                                      OUT float &fMovingAvgX, OUT float &fMovingCorrelatedAvgX, OUT float &fMovingAvgZ, VideoCapture &xCaptureFrame, OUT Mat &xFrameCommon, bool isCalcOk)
 {
   float fCoefRotation(0.f), fCoefTranslation(0.f); // Coefficients of rotation and translation
   int16_t ssCoefShift(0);
   static float fYawForward__(0.f), fX_Forward__(0.f), fCorrelatedX_Forward__(0.f), fZ_Forward__(0.f); // Calculated values at the point closest to the marker
   static float fPeriod__(0.f), fAmplitude__(0.f);
+  static bool isCalcInForwardOk__(true);
 
   switch (eStatePosition_)
   {
@@ -617,6 +620,8 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
       vRiscBehavior(TEnumRiscBehavior::RISC_WRONG_INPUT_COMBINATION, "Momentary movements between points of extrema");
 
     eStatePosition_ = TEnumStatePosition::STATE_NONE;
+
+    isCalcInForwardOk__ = isCalcOk;
 
     break;
 
@@ -767,6 +772,9 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
       if (((1.5 * fMovingCorrelatedAvgX) > fMovingAvgZ) && (fMovingCorrelatedAvgX < IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT))
         ssCoefShift = -1;
     }
+    // If tha calculation fails in closest point, then shift back /// @attention
+    if (isCalcInForwardOk__ == false)
+      ssCoefShift = -1;
 
     // SAFETY CHECK PERMISSIBLE
     if (fabsf(fMovingCorrelatedAvgX - xTarget_.fX) > SAFETY_MAX_SIDEWAYS_M)
@@ -792,7 +800,7 @@ static void prvMovingAvgAndSendPacket(TEnumStatePosition &eStatePosition_, float
     if ((digitalRead(NO_PIN_FORWARD) == HIGH) && (digitalRead(NO_PIN_BACK) == LOW))
       vRiscBehavior(TEnumRiscBehavior::RISC_WRONG_INPUT_COMBINATION, "Momentary movements between points of extrema");
 
-    this_thread::sleep_for(800ms); /// @todo Reduce the delay if there are no SPI errors
+    this_thread::sleep_for(250ms); /// @todo Reduce the delay if there are no SPI errors
     for (size_t i = 0; i < COUNT__OF_DATA_PACKET_SENDS; i++)
     {
       if (bSendPacketToStroller(ID_PACKET_IN_WCU_MOTION_CMD, fCoefRotation, fCoefTranslation, ssCoefShift, fDistance, OUT fPeriod__, OUT fAmplitude__) == false)

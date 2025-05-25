@@ -55,8 +55,8 @@ void vInitializationSystem(std::ofstream &xFileToSave, OUT cv::Mat &xCameraMatri
   pinMode(NO_PIN_FORWARD, INPUT);
   pinMode(NO_PIN_BACK, INPUT);
 
-  // pthread_create (&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
-  // pthread_detach(xThreadCheckPinShutdown);
+  pthread_create (&xThreadCheckPinShutdown, NULL, prvCheckShutdown, NULL);
+  pthread_detach(xThreadCheckPinShutdown);
 
   errno = 0;
   if (wiringPiSPISetupMode(SPI_CHANNEL, SPI_PORT, SPI_BAUDRATE, SPI_MODE) < 0)

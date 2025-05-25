@@ -57,14 +57,14 @@ const int SPI_BAUDRATE = 100000;
 const int SPI_MODE = 0;
 
 const float COEF_PROPORTIONAL_YAW = 4.f;
-const float COEF_INTEGRAL_YAW = 0.01;
+const float COEF_INTEGRAL_YAW = 0.01f;
 const float COEF_DIFFERENTIAL_YAW = 0.f;
-const float COEF_PROPORTIONAL_X = 1.f;
-const float COEF_INTEGRAL_X = 0.004;
+const float COEF_PROPORTIONAL_X = 0.5f;
+const float COEF_INTEGRAL_X = 0.002;
 const float COEF_DIFFERENTIAL_X = 0.f;
 
 const size_t COUNT_FRAMES_TO_CALC = 5;
-const size_t COUNT_FRAMES_TO_CALC_TARGET = 50;
+const size_t COUNT_FRAMES_TO_CALC_TARGET = 20;
 const size_t COUNT__OF_DATA_PACKET_SENDS = 7;
 
 const size_t COUNT_MEASUREMENT_FOR_MOVING_AVG = 3;
