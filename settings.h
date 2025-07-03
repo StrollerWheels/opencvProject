@@ -25,9 +25,9 @@
 //#define SAFETY_USE (0)
 #define SAFETY_MAX_SIDEWAYS_M (0.21) ///< Maximum permissible sideways movement, in meters
 #define SAFETY_MAX_ROTATION_ANGLE_RAD (18.f / DEGRES_IN_RAD) ///< Maximum permissible rotation angle (18 degrees), in radians
-#define SAFETY_COUNT_ITERATION_MARKER_NOT_IDENTIFIED (2) ///< Number of iterations when the marker is not identified, at which the Alert
+#define SAFETY_COUNT_ITERATION_MARKER_NOT_IDENTIFIED (3) ///< Number of iterations when the marker is not identified, at which the Alert
 #define SAFETY_MAX_MARKER_MISSES (40.f / 100.f) ///< Maximum permissible percentage of marker misses
-#define SAFETY_COUNT_ITERATION_TO_CALC_MISSES (3) ///< Number of iterations to calculate the percentage of marker misses
+#define SAFETY_COUNT_ITERATION_TO_CALC_MISSES (4) ///< Number of iterations to calculate the percentage of marker misses
 #define SAFETY_MISS_RATE_YAW_RAD (8.f / DEGRES_IN_RAD ) ///< 
 #define SAFETY_TIME_TO_CALC_SETPOINT_SEC (20) ///< 
 #define SAFETY_MIN_PERCENTAGE_FRAMES_TO_CALC_SETPOINT (67.f / 100.f) ///< Minimal permissible percentage of frames for setpoint calculation
@@ -75,13 +75,15 @@ constexpr float MISS_RATE_Z_METER = 0.5;
 constexpr float IMPOSSIBLE_YAW_X_Z_VALUE = 100.f; ///< Moving average is initiated by this value, impossible value
 /** Value for conditional branching, just in case because of the specifics of storing float in memory */
 constexpr float IMPOSSIBLE_YAW_X_Z_VALUE_FLOAT = (IMPOSSIBLE_YAW_X_Z_VALUE - FLOAT_EPSILON); ///< Moving average is initiated by this value
-const float TARGET_DISTANCE_VALUE_METER = TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS; /// @note Zoom in. when the camera will replace
-const float MAX_RECOMMENDED_DISTANCE_METER = TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS + 0.25;
-const float MINIMAL_DISTANCE_VALUE_METER = 0.62; /// @note Zoom in. when the camera will replace
-const float MINIMAL_DISTANCE_VALUE_METER_TWO_SHIFT = 0.56; /// @note Zoom in. when the camera will replace
-const float MINIMAL_DISTANCE_VALUE_METER_THREE_SHIFT = 0.5; /// @note Zoom in. when the camera will replace
-const float MINIMAL_DISTANCE_VALUE_METER_FOUR_SHIFT = 0.44; /// @note Zoom in. when the camera will replace
-const float MINIMAL_DISTANCE_VALUE_METER_FIVE_SHIFT = 0.38; /// @note Zoom in. when the camera will replace
-const float MINIMAL_DISTANCE_VALUE_PERMISSIBLE = 0.32; /// @note Zoom in. when the camera will replace
+constexpr float TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS = 0.67; ///< Target distance to the marker at the closest point
+constexpr float DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER = 0.06; ///< Distance from camera to the front of the stroller
+constexpr float TARGET_DISTANCE_VALUE_METER = TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS + DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER; /// @note Zoom in. when the camera will replace
+constexpr float MAX_RECOMMENDED_DISTANCE_METER = TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS + 0.25 + DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER;
+constexpr float MINIMAL_DISTANCE_VALUE_METER = 0.62 + DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER; /// @note Zoom in. when the camera will replace
+constexpr float MINIMAL_DISTANCE_VALUE_METER_TWO_SHIFT = 0.56 + DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER; /// @note Zoom in. when the camera will replace
+constexpr float MINIMAL_DISTANCE_VALUE_METER_THREE_SHIFT = 0.5 + DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER; /// @note Zoom in. when the camera will replace
+constexpr float MINIMAL_DISTANCE_VALUE_METER_FOUR_SHIFT = 0.44 + DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER; /// @note Zoom in. when the camera will replace
+constexpr float MINIMAL_DISTANCE_VALUE_METER_FIVE_SHIFT = 0.38 + DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER; /// @note Zoom in. when the camera will replace
+constexpr float MINIMAL_DISTANCE_VALUE_PERMISSIBLE = 0.32 + DISTANCE_FROM_CAMERA_TO_FRONT_STROLLER; /// @note Zoom in. when the camera will replace
 
 #endif // SETTINGS_H_

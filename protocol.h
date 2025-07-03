@@ -55,7 +55,6 @@
 
 
 #define MAX_SIZE_ARUCO_PACKET (sizeof(TProtocolInScuMotionCmd)) ///< Максимальный размер валидного пакета
-#define TARGET_DISTANCE_TO_MARKER_AT_CLOSEST_POINT_METERS (0.67) ///< Target distance to the marker at the closest point
 
 /** @name
  * ### Packet preambules

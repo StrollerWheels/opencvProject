@@ -233,13 +233,14 @@ int main(int argc, char *argv[])
     //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     // * * * START OF FRAMES COLLECTION AT THE EXTREMES * * *
     //  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-    /***/ static auto nClosestPoint__ = 0;
+    /***/ 
+    static auto nClosestPoint__ = 0; // for statistic
     static auto nFarPoint__ = 0; /***/
     {
       /***/ bool isClosestWas = false;
       /***/ bool isFarWas = false;
       // Closes point to the marker
-      auto nNotPoint = 0;
+      auto nNotPoint = 0; // from contact bounce
       while ((nNotPoint < 3) && (pxFramesForward_.size() < COUNT_FRAMES_TO_CALC))
       {
         this_thread::sleep_for(2ms);
@@ -297,7 +298,10 @@ int main(int argc, char *argv[])
       if ((pxFramesForward_.empty() == true) && (pxFramesBack_.empty() == false))
         eStatePosition_ = TEnumStatePosition::STATE_BACK;
 
-      if (pxFramesForward_.empty() == pxFramesBack_.empty())
+      if ((pxFramesForward_.empty() == false) && ( pxFramesBack_.empty() == false))
+        eStatePosition_ = TEnumStatePosition::STATE_BACK;  /// @note Attention here
+
+      if ((pxFramesForward_.empty() == true) && ( pxFramesBack_.empty() == true))
         eStatePosition_ = TEnumStatePosition::STATE_NONE;
 
       // Position calculation preparation
@@ -537,6 +541,7 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
   if (isMarkerIdentified == false)
   {
     nNotIdentifiedRow__++;
+    ret = false;
   }
   else
   {
@@ -555,11 +560,12 @@ static bool prvYawTranslationCalculation(TEnumStatePosition &eStatePosition_, qu
   }
   else
   {
-    if (eStatePosition_ == TEnumStatePosition::STATE_FORWARD)
-      nMissesRow__ = 0;
+    if (eStatePosition_ == TEnumStatePosition::STATE_FORWARD)    
+      nMissesRow__ = 0;    
   }
-  if (nMissesRow__ >= SAFETY_COUNT_ITERATION_TO_CALC_MISSES)
+  if (nMissesRow__ >= SAFETY_COUNT_ITERATION_TO_CALC_MISSES)  
     vRiscBehavior(TEnumRiscBehavior::RISK_ALERT_MORE_MISSES, " ! ! ! More misses in a row ! ! ! ");
+  
 
   // Averaging
   if ((fYawOkNo != 0) && (fX_OkNo != 0) /* && (fZ_OkNo != 0)*/)
